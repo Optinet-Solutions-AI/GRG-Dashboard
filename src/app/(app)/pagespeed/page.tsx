@@ -3,6 +3,7 @@ import { signScreenshots } from "@/lib/storage";
 import { getCurrentRole, isAdminRole } from "@/lib/auth";
 import { addPagespeedPeriod } from "./actions";
 import { AddPagespeedPeriod } from "@/components/entry/AddPagespeedPeriod";
+import { PsiAutofillButton } from "@/components/sources/PsiAutofillButton";
 
 function NumChip({ n }: { n: number | null }) {
   const color = n == null ? "bg-slate-200 text-slate-600" : n >= 90 ? "bg-green-600 text-white" : n >= 50 ? "bg-amber-500 text-white" : "bg-red-500 text-white";
@@ -29,19 +30,26 @@ export default async function PageSpeedPage({ searchParams }: { searchParams: Pr
   const isAdmin = isAdminRole(await getCurrentRole());
   let entry = null;
   if (isAdmin) {
-    const { data: purls } = await supabase.from("pagespeed_urls").select("id, url, sites!inner(domain)").order("sort_order");
+    const { data: purls } = await supabase.from("pagespeed_urls").select("id, url, label, sites!inner(domain)").order("sort_order");
     const { data: latestPs } = await supabase.from("pagespeed_entries").select("pagespeed_url_id, mobile_score, desktop_score, date").order("date", { ascending: false });
     const latestByUrl = new Map<string, { mobile_score: number | null; desktop_score: number | null }>();
     for (const r of (latestPs ?? []) as Array<{ pagespeed_url_id: string; mobile_score: number | null; desktop_score: number | null }>) {
       if (!latestByUrl.has(r.pagespeed_url_id)) latestByUrl.set(r.pagespeed_url_id, r);
     }
-    const urlRows = ((purls ?? []) as unknown as Array<{ id: string; url: string; sites: { domain: string } }>).map((u) => {
+    const purlRows = (purls ?? []) as unknown as Array<{ id: string; url: string; label: string | null; sites: { domain: string } }>;
+    const urlRows = purlRows.map((u) => {
       const v = latestByUrl.get(u.id);
       return { id: u.id, url: u.url, host: u.sites.domain, mobile: v?.mobile_score ?? null, desktop: v?.desktop_score ?? null };
     });
+    const psiUrls = purlRows.map((u) => ({ id: u.id, url: u.url, label: u.label }));
     const today = new Date();
     const defaultDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
-    entry = <AddPagespeedPeriod urls={urlRows} defaultDate={defaultDate} action={addPagespeedPeriod} />;
+    entry = (
+      <>
+        <PsiAutofillButton urls={psiUrls} />
+        <AddPagespeedPeriod urls={urlRows} defaultDate={defaultDate} action={addPagespeedPeriod} />
+      </>
+    );
   }
 
   return (
