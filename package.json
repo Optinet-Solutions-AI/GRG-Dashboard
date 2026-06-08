@@ -9,6 +9,7 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
+    "db:apply": "node --env-file=.env.local scripts/db-apply.mjs",
     "db:verify": "node --env-file=.env.local scripts/verify-schema.mjs",
     "accounts:provision": "node --env-file=.env.local scripts/provision-accounts.mjs"
   },
