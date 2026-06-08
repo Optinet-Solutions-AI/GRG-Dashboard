@@ -1,14 +1,17 @@
 import { TopNav } from "@/components/TopNav";
+import { getCurrentUser, getCurrentRole, isAdminRole } from "@/lib/auth";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { redirect } from "next/navigation";
 
-// Phase 2 replaces this with the reference's auth-guarded async layout (cookies + DB),
-// which is dynamic by nature. Until then, force dynamic rendering so the prerenderer
-// doesn't trip on `useSearchParams()` inside the nav's SiteSelector.
-export const dynamic = "force-dynamic";
-
-export default function AppLayout({ children }: { children: React.ReactNode }) {
+export default async function AppLayout({ children }: { children: React.ReactNode }) {
+  const user = await getCurrentUser();
+  if (!user) redirect("/login");
+  const role = await getCurrentRole();
+  const supabase = await createServerSupabaseClient();
+  const { data: sites } = await supabase.from("sites").select("id, display_name").order("sort_order");
   return (
     <>
-      <TopNav userEmail="local@dev" isAdmin={true} sites={[]} />
+      <TopNav userEmail={user.email ?? ""} isAdmin={isAdminRole(role)} sites={sites ?? []} />
       <main className="mx-auto max-w-7xl px-5 py-6">{children}</main>
     </>
   );
