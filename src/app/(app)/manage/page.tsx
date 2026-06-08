@@ -1,3 +1,5 @@
-export default function Page() {
-  return <h1 className="text-xl font-bold">Manage</h1>;
+import { redirect } from "next/navigation";
+
+export default function ManageIndex() {
+  redirect("/manage/sites");
 }
