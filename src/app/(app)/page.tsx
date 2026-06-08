@@ -1,6 +1,7 @@
 import { getOverview, getTop10Trend } from "@/lib/data/overview";
 import { StatCard } from "@/components/StatCard";
 import { TrendChart } from "@/components/charts/TrendChart";
+import { AssistantPanel } from "@/components/assistant/AssistantPanel";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export default async function OverviewPage({ searchParams }: { searchParams: Promise<{ site?: string }> }) {
@@ -23,6 +24,8 @@ export default async function OverviewPage({ searchParams }: { searchParams: Pro
           {overview?.latest_week ? `Latest ranking week: ${overview.latest_week}` : ""}
         </span>
       </div>
+
+      <AssistantPanel siteId={siteId} />
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <StatCard label="Avg SEO Score" value={overview?.avg_seo != null ? String(overview.avg_seo) : "—"} />
