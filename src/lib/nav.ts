@@ -8,5 +8,6 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Ranking", href: "/ranking" },
   { label: "Backlinks", href: "/backlinks" },
   { label: "QA", href: "/qa" },
+  { label: "Analytics", href: "/analytics" },
   { label: "Manage", href: "/manage", adminOnly: true },
 ];

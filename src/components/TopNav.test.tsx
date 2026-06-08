@@ -17,7 +17,7 @@ describe("TopNav", () => {
     expect(screen.getByText("a@x.com")).toBeInTheDocument();
     expect(screen.getByLabelText(/site/i)).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "All sites" })).toBeInTheDocument();
-    for (const label of ["Overview", "SEO", "Ranking", "Manage"]) {
+    for (const label of ["Overview", "SEO", "Ranking", "Analytics", "Manage"]) {
       expect(screen.getByRole("link", { name: label })).toBeInTheDocument();
     }
   });
