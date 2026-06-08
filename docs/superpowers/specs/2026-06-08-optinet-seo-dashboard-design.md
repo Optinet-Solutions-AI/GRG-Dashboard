@@ -219,3 +219,15 @@ shows its placeholder state).
 - Analytics section structure (user to supply; section stays inert until then).
 - Whether to expose the Assistant as its own nav tab vs. a panel on Overview (decide in
   the plan; default: panel on Overview).
+
+## Update 2026-06-08 — access model
+
+The access model changed from "everyone logs in" to a **public read-only dashboard plus a
+single admin who logs in to edit**. Anonymous (`anon`) visitors now get read-only access to
+all data tables and the screenshots bucket via SELECT policies added in migration
+`0010_public_read.sql` (`profiles` stays restricted; all write policies from `0003` remain
+admin-only via `is_admin()`). The `(app)` layout no longer forces login — anonymous users
+see read-only pages, while the Manage section stays admin-only via `requireAdmin()`. The
+original "client logs in read-only" goal is **replaced by "public read-only"**: there is no
+client/viewer login anymore, so account provisioning now provisions only the admin (the
+viewer is optional).
