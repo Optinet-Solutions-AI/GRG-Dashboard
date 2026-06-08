@@ -1,18 +1,14 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
 
-const PUBLIC_PATHS = ["/login", "/auth"];
-
 export async function proxy(request: NextRequest) {
   const { response, user } = await updateSession(request);
   const { pathname } = request.nextUrl;
-  const isPublic = PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/"));
 
-  if (!user && !isPublic) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/login";
-    return NextResponse.redirect(url);
-  }
+  // Public read-only dashboard: anyone may VIEW any page without logging in. The middleware
+  // only refreshes the session — it does NOT gate access. Editing is guarded server-side
+  // (requireAdmin() on every write action + the Manage layout); anonymous visitors just see
+  // read-only pages. Convenience: a logged-in admin who hits /login is sent to the home page.
   if (user && pathname === "/login") {
     const url = request.nextUrl.clone();
     url.pathname = "/";
