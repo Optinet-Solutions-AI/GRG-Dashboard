@@ -12,16 +12,19 @@ The dashboard tracks SEO keyword positions across **six GCC markets** (Saudi Ara
 
 ---
 
-## Categories
+## Site & Markets
 
-| Category | Domain Type | Countries |
-|----------|-------------|-----------|
-| **BP Sites** | Main/affiliate domains | SA, QA, OM, KW, BH, AE |
-| **LP Sites** | Landing-page domains | SA, QA, OM, KW, BH, AE |
+A **single website** is tracked across the **6 GCC markets** × **15 keywords** = **90 keyword×country positions per week**. The BP/LP category split from the original (affiliate-casino) doc does **not** apply here and is dropped.
 
-Each upload is tagged to one category. BP and LP domain namespaces are kept strictly separate — a domain only matches a brand if it belongs to the correct category.
+## Input pipeline (target)
 
-> **Note:** the BP/LP split came from an affiliate-casino setup. For this single trading-recovery service it may not apply — confirm whether you actually have two domain categories, or whether ranking is just one site (or a small set of sites) across the 6 markets.
+1. **One-click export** in the rank tracker → it emails the weekly report to a Gmail inbox.
+2. A **Gmail reader** finds that report email (by sender/subject) and downloads the attachment.
+3. A **parser** extracts `(keyword, country, position)` for the week (positions `1`–`100` / `NR`).
+4. The week is **upserted** into the `rankings` table as that week's snapshot; movement vs. the prior week + colors are computed by the dashboard automatically.
+5. Runs **weekly** (scheduled) or on-demand. Manual entry remains as a fallback.
+
+> The exact parsing rules depend on the real export format from the tracker — to be finalized once a sample export is provided.
 
 ---
 
