@@ -25,31 +25,40 @@ async function main() {
     adminPw = process.env.ADMIN_PASSWORD;
   const viewerEmail = process.env.VIEWER_EMAIL,
     viewerPw = process.env.VIEWER_PASSWORD;
-  if (!url || !serviceKey || !dbUrl || !adminEmail || !adminPw || !viewerEmail || !viewerPw) {
+  if (!url || !serviceKey || !dbUrl || !adminEmail || !adminPw) {
     throw new Error("Missing required env vars for provisioning.");
   }
+  // Viewer is optional now (public read-only dashboard); only provision it if both vars are set.
+  const provisionViewer = Boolean(viewerEmail && viewerPw);
 
   const admin = createClient(url, serviceKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
   const adminId = await ensureUser(admin, adminEmail, adminPw);
-  await ensureUser(admin, viewerEmail, viewerPw);
+  const provisioned = [adminEmail];
+  if (provisionViewer) {
+    await ensureUser(admin, viewerEmail, viewerPw);
+    provisioned.push(viewerEmail);
+  }
 
-  // Promote admin role (the trigger created both as 'viewer').
+  // Promote admin role (the trigger created accounts as 'viewer').
   const isLocal = /localhost|127\.0\.0\.1/.test(dbUrl);
   const client = new pg.Client({ connectionString: dbUrl, ssl: isLocal ? false : { rejectUnauthorized: false } });
   await client.connect();
   try {
     await client.query("update public.profiles set role='admin' where id=$1", [adminId]);
-    await client.query("update public.profiles set role='viewer' where id <> $1 and email=$2", [
-      adminId,
-      viewerEmail,
-    ]);
+    if (provisionViewer) {
+      await client.query("update public.profiles set role='viewer' where id <> $1 and email=$2", [
+        adminId,
+        viewerEmail,
+      ]);
+    }
     const r = await client.query("select email, role from public.profiles order by role");
     console.log("Profiles:", r.rows.map((x) => `${x.email}=${x.role}`).join(", "));
   } finally {
     await client.end();
   }
+  console.log(`Provisioned accounts: ${provisioned.join(", ")}.`);
   console.log("Provisioning complete.");
 }
 
