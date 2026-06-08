@@ -1,4 +1,4 @@
 export const BRAND = {
-  name: "Client",
-  productName: "SEO/QA Dashboard",
+  name: "Gulf Recovery Group",
+  productName: "Reporting Dashboard",
 } as const;
