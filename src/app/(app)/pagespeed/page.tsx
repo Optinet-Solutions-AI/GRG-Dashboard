@@ -1,5 +1,4 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { signScreenshots } from "@/lib/storage";
 import { getCurrentRole, isAdminRole } from "@/lib/auth";
 import { addPagespeedPeriod } from "./actions";
 import { AddPagespeedPeriod } from "@/components/entry/AddPagespeedPeriod";
@@ -29,21 +28,17 @@ function Gauge({ label, score }: { label: string; score: number | null }) {
 }
 
 function DeviceReport({
-  label, perf, a11y, bp, seo, shot,
-}: { label: string; perf: number | null; a11y: number | null; bp: number | null; seo: number | null; shot?: string }) {
+  label, perf, a11y, bp, seo,
+}: { label: string; perf: number | null; a11y: number | null; bp: number | null; seo: number | null }) {
   return (
     <div>
       <div className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">{label} report</div>
-      <div className="flex flex-wrap gap-3">
+      <div className="flex flex-wrap gap-3 sm:gap-5">
         <Gauge label="Performance" score={perf} />
         <Gauge label="Accessibility" score={a11y} />
         <Gauge label="Best Practices" score={bp} />
         <Gauge label="SEO" score={seo} />
       </div>
-      {shot ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={shot} alt={`${label} screenshot`} className="mt-3 w-36 rounded-lg border border-slate-200" />
-      ) : null}
     </div>
   );
 }
@@ -53,7 +48,6 @@ type Row = {
   date: string;
   mobile_score: number | null; mobile_accessibility: number | null; mobile_best_practices: number | null; mobile_seo: number | null;
   desktop_score: number | null; desktop_accessibility: number | null; desktop_best_practices: number | null; desktop_seo: number | null;
-  mobile_screenshot_path: string | null; desktop_screenshot_path: string | null;
   pagespeed_urls: { url: string; sites: { display_name: string } };
 };
 
@@ -62,13 +56,11 @@ export default async function PageSpeedPage({ searchParams }: { searchParams: Pr
   const supabase = await createServerSupabaseClient();
   let q = supabase
     .from("pagespeed_entries")
-    .select("id, date, mobile_score, mobile_accessibility, mobile_best_practices, mobile_seo, desktop_score, desktop_accessibility, desktop_best_practices, desktop_seo, mobile_screenshot_path, desktop_screenshot_path, pagespeed_urls!inner(url, site_id, sites!inner(display_name))")
+    .select("id, date, mobile_score, mobile_accessibility, mobile_best_practices, mobile_seo, desktop_score, desktop_accessibility, desktop_best_practices, desktop_seo, pagespeed_urls!inner(url, site_id, sites!inner(display_name))")
     .order("date", { ascending: false });
   if (site) q = q.eq("pagespeed_urls.site_id", site);
   const { data } = await q;
   const rows = (data ?? []) as unknown as Row[];
-
-  const signed = await signScreenshots(rows.flatMap((r) => [r.mobile_screenshot_path, r.desktop_screenshot_path]));
 
   const isAdmin = isAdminRole(await getCurrentRole());
   let entry = null;
@@ -110,10 +102,8 @@ export default async function PageSpeedPage({ searchParams }: { searchParams: Pr
             <span className="text-xs text-slate-500">{r.date}</span>
           </div>
           <div className="grid gap-6 md:grid-cols-2">
-            <DeviceReport label="Mobile" perf={r.mobile_score} a11y={r.mobile_accessibility} bp={r.mobile_best_practices} seo={r.mobile_seo}
-              shot={r.mobile_screenshot_path ? signed.get(r.mobile_screenshot_path) : undefined} />
-            <DeviceReport label="Desktop" perf={r.desktop_score} a11y={r.desktop_accessibility} bp={r.desktop_best_practices} seo={r.desktop_seo}
-              shot={r.desktop_screenshot_path ? signed.get(r.desktop_screenshot_path) : undefined} />
+            <DeviceReport label="Mobile" perf={r.mobile_score} a11y={r.mobile_accessibility} bp={r.mobile_best_practices} seo={r.mobile_seo} />
+            <DeviceReport label="Desktop" perf={r.desktop_score} a11y={r.desktop_accessibility} bp={r.desktop_best_practices} seo={r.desktop_seo} />
           </div>
         </div>
       ))}

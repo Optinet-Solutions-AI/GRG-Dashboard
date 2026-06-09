@@ -5,6 +5,22 @@
   --font-mono: var(--font-geist-mono);
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
 body {
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  background: #f8fafc; /* slate-50 — lets white cards read as "premium" */
+}
+
+/* Premium look: hide scrollbars everywhere while keeping scroll/touch behavior. */
+* {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* legacy Edge/IE */
+}
+*::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none; /* Chrome / Safari / new Edge */
 }

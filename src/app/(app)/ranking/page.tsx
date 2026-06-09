@@ -69,7 +69,7 @@ export default async function RankingPage({ searchParams }: { searchParams: Prom
       {weeks.length === 0 ? (
         <p className="text-sm text-slate-500">No ranking data yet{isAdmin ? " — import an Ahrefs export above." : "."}</p>
       ) : (
-        <div className="max-h-[72vh] space-y-6 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50/40 p-3">
+        <div className="space-y-6 rounded-lg border border-slate-200 bg-slate-50/40 p-3">
           {weekly.map(({ week, rows }, i) => (
             <section key={week}>
               <div className="sticky top-0 -mx-3 mb-2 flex items-center gap-2 bg-slate-50/95 px-3 py-1 backdrop-blur">

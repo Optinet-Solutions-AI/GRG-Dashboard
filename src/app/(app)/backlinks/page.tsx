@@ -2,6 +2,7 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { getCurrentRole, isAdminRole } from "@/lib/auth";
 import { StatCard } from "@/components/StatCard";
 import { SyncBacklinksButton } from "@/components/sections/SyncBacklinksButton";
+import { BacklinksTable } from "@/components/backlinks/BacklinksTable";
 
 type Row = {
   id: string; date: string;
@@ -89,37 +90,16 @@ export default async function BacklinksPage({ searchParams }: { searchParams: Pr
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-slate-200 text-left text-slate-500">
-              <th className="px-3 py-2 font-medium">Date</th>
-              <th className="px-3 py-2 font-medium">Source</th>
-              <th className="px-3 py-2 font-medium">Anchor</th>
-              <th className="px-3 py-2 font-medium">Target</th>
-              <th className="px-3 py-2 font-medium">Status</th>
-              <th className="px-3 py-2 font-medium">Indexed</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.id} className="border-b border-slate-100 align-top">
-                <td className="whitespace-nowrap px-3 py-2 text-slate-600">{r.date}</td>
-                <td className="px-3 py-2">
-                  {r.source_url ? <a href={r.source_url} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">{r.source_site ?? r.source_url}</a> : (r.source_site ?? "—")}
-                </td>
-                <td className="px-3 py-2 text-slate-700">{r.anchor_text ?? "—"}</td>
-                <td className="max-w-[18rem] truncate px-3 py-2">
-                  {r.target_url ? <a href={r.target_url} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">{r.target_url.replace(/^https?:\/\//, "")}</a> : "—"}
-                </td>
-                <td className="px-3 py-2 text-slate-600">{r.status ?? "—"}</td>
-                <td className="px-3 py-2">{isIndexed(r.indexed) ? <span className="text-green-600">✓</span> : <span className="text-slate-300">—</span>}</td>
-              </tr>
-            ))}
-            {rows.length === 0 ? <tr><td colSpan={6} className="px-3 py-3 text-slate-500">No backlinks yet{isAdmin ? " — click “Sync from Google Sheet”." : "."}</td></tr> : null}
-          </tbody>
-        </table>
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-slate-500">Click a column header to sort (date, status, keyword…).</p>
+        {rows.length === 0 && isAdmin ? <p className="text-xs text-slate-500">No backlinks yet — click “Sync from Google Sheet”.</p> : null}
       </div>
+      <BacklinksTable
+        rows={rows.map((r) => ({
+          id: r.id, date: r.date, source_site: r.source_site, source_url: r.source_url,
+          anchor_text: r.anchor_text, target_url: r.target_url, indexed: r.indexed, status: r.status,
+        }))}
+      />
     </div>
   );
 }
