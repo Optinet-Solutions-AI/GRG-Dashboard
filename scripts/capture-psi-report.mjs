@@ -19,7 +19,8 @@ async function captureReport(page, url, strategy) {
   // Dismiss the cookie banner if present.
   try { await page.getByRole("button", { name: /Ok, Got it/i }).click({ timeout: 4000 }); } catch { /* none */ }
   // "Captured at …" only appears once the live audit finishes.
-  await page.waitForFunction(() => /Captured at/i.test(document.body.innerText), { timeout: 120000 });
+  // NOTE: 3rd arg is options; the 2nd (arg) must be present or the timeout is ignored (defaults to 30s).
+  await page.waitForFunction(() => /Captured at/i.test(document.body.innerText), null, { timeout: 150000 });
   await page.waitForTimeout(2500);
   // Clip the report header + gauges + metrics + the "Captured at … Lighthouse" proof line.
   return page.screenshot({ clip: { x: 0, y: 0, width: 1000, height: 660 }, type: "png" });

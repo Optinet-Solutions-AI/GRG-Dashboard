@@ -16,7 +16,8 @@ async function captureReport(page, url, strategy) {
   const target = `https://pagespeed.web.dev/analysis?url=${encodeURIComponent(url)}&form_factor=${strategy}`;
   await page.goto(target, { waitUntil: "domcontentloaded", timeout: 60000 });
   try { await page.getByRole("button", { name: /Ok, Got it/i }).click({ timeout: 4000 }); } catch { /* no banner */ }
-  await page.waitForFunction(() => /Captured at/i.test(document.body.innerText), { timeout: 120000 });
+  // NOTE: 3rd arg is options; the 2nd (arg) must be present or the timeout is ignored.
+  await page.waitForFunction(() => /Captured at/i.test(document.body.innerText), null, { timeout: 150000 });
   await page.waitForTimeout(2500);
   return page.screenshot({ clip: { x: 0, y: 0, width: 1000, height: 660 }, type: "png" });
 }
@@ -40,15 +41,23 @@ async function main() {
   for (const u of urls) {
     const patch = { pagespeed_url_id: u.id, date };
     for (const strategy of ["mobile", "desktop"]) {
+      let buf = null;
+      for (let attempt = 1; attempt <= 2 && !buf; attempt++) {
+        try {
+          console.log(`Capturing ${strategy} report for ${u.url} (attempt ${attempt}) …`);
+          buf = await captureReport(page, u.url, strategy);
+        } catch (e) {
+          console.log(`  ${strategy} attempt ${attempt} failed:`, e.message);
+        }
+      }
+      if (!buf) { console.log(`  ${strategy} gave up.`); continue; }
       try {
-        console.log(`Capturing ${strategy} report for ${u.url} …`);
-        const buf = await captureReport(page, u.url, strategy);
         const path = `pagespeed/${u.id}-${strategy}-report-${date}.png`;
         const up = await db.storage.from("screenshots").upload(path, buf, { contentType: "image/png", upsert: true });
         if (up.error) throw new Error(up.error.message);
         patch[`${strategy}_screenshot_path`] = path;
       } catch (e) {
-        console.log(`  ${strategy} FAILED:`, e.message);
+        console.log(`  ${strategy} upload failed:`, e.message);
       }
     }
     const { error: upErr } = await db.from("pagespeed_entries").upsert(patch, { onConflict: "pagespeed_url_id,date" });
