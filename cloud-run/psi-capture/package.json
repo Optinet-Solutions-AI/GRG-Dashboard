@@ -1,0 +1,11 @@
+{
+  "name": "psi-capture-job",
+  "private": true,
+  "type": "module",
+  "version": "1.0.0",
+  "description": "Cloud Run Job: capture the real PageSpeed Insights report screenshot and upload to Supabase.",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "playwright": "1.60.0"
+  }
+}
