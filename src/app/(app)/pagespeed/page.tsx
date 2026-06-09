@@ -5,6 +5,9 @@ import { addPagespeedPeriod } from "./actions";
 import { AddPagespeedPeriod } from "@/components/entry/AddPagespeedPeriod";
 import { PsiAutofillButton } from "@/components/sources/PsiAutofillButton";
 
+// PSI runs Lighthouse for mobile + desktop (~30-60s); give the serverless function room.
+export const maxDuration = 60;
+
 function NumChip({ n }: { n: number | null }) {
   const color = n == null ? "bg-slate-200 text-slate-600" : n >= 90 ? "bg-green-600 text-white" : n >= 50 ? "bg-amber-500 text-white" : "bg-red-500 text-white";
   return <span className={`inline-flex min-w-[2rem] items-center justify-center rounded-md px-2 py-0.5 text-xs font-semibold ${color}`}>{n ?? "—"}</span>;
