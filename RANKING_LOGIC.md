@@ -16,15 +16,21 @@ The dashboard tracks SEO keyword positions across **six GCC markets** (Saudi Ara
 
 A **single website** is tracked across the **6 GCC markets** × **15 keywords** = **90 keyword×country positions per week**. The BP/LP category split from the original (affiliate-casino) doc does **not** apply here and is dropped.
 
-## Input pipeline (target)
+## Input pipeline
 
-1. **One-click export** in the rank tracker → it emails the weekly report to a Gmail inbox.
-2. A **Gmail reader** finds that report email (by sender/subject) and downloads the attachment.
-3. A **parser** extracts `(keyword, country, position)` for the week (positions `1`–`100` / `NR`).
-4. The week is **upserted** into the `rankings` table as that week's snapshot; movement vs. the prior week + colors are computed by the dashboard automatically.
-5. Runs **weekly** (scheduled) or on-demand. Manual entry remains as a fallback.
+**Source tool:** Ahrefs Rank Tracker. The "Overview" export is a **UTF-16LE, tab-delimited** file with quoted fields (35 columns). The columns we use:
 
-> The exact parsing rules depend on the real export format from the tracker — to be finalized once a sample export is provided.
+| Column | Use |
+|---|---|
+| `Keyword` | matched to the Arabic keyword by exact text |
+| `Country code` | `SA / QA / OM / KW / BH / AE` → market |
+| `Current position` | this week's rank (empty or > 100 ⇒ `NR` / null) |
+| `Previous position` | prior snapshot's rank (seeds the previous week) |
+| `Current update date` | snapshot date (→ current week; previous week = −7 days) |
+
+**Importer:** `scripts/import-rankings.mjs` — run `npm run import:rankings -- "<export.csv>"`. It decodes UTF-16, matches keywords + country codes to the DB, and upserts **two** weekly snapshots (previous + current) so movement shows immediately. Unmatched keywords/countries are reported, never silently dropped.
+
+**Weekly flow (target automation):** one-click Ahrefs export → emailed to Gmail → a reader downloads the attachment → runs the same importer → `rankings` updated. Movement vs. the prior week + colors are computed by the dashboard. Manual entry remains a fallback.
 
 ---
 
