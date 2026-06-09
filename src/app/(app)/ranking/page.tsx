@@ -5,6 +5,7 @@ import { WeekSelector } from "@/components/ranking/WeekSelector";
 import { getCurrentRole, isAdminRole } from "@/lib/auth";
 import { addRankingWeek } from "./actions";
 import { AddRankingWeek } from "@/components/entry/AddRankingWeek";
+import { ImportRankings } from "@/components/ranking/ImportRankings";
 
 export default async function RankingPage({ searchParams }: { searchParams: Promise<{ site?: string; week?: string }> }) {
   const { site, week } = await searchParams;
@@ -53,6 +54,7 @@ export default async function RankingPage({ searchParams }: { searchParams: Prom
         Green = top 10 · Amber = 11–100 · Red = not in top 100. ▲/▼ show movement vs the previous week.
         {!site ? " Showing the first site — use the selector in the top bar to change site." : ""}
       </p>
+      {isAdmin ? <ImportRankings siteId={selected.id} /> : null}
       {entry}
       <RankingGrid rows={rows} />
     </div>
