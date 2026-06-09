@@ -51,7 +51,7 @@ export default async function RankingPage({ searchParams }: { searchParams: Prom
         {weeks.length ? <WeekSelector weeks={weeks} current={currentWeek} /> : null}
       </div>
       <p className="text-xs text-slate-500">
-        Green = top 10 · Amber = 11–100 · Red = not in top 100. ▲/▼ show movement vs the previous week.
+        <span className="font-semibold text-green-600">↑</span> improved · <span className="font-semibold text-red-600">↓</span> dropped vs previous week · (n) = previous position · grey = not in top 100.
         {!site ? " Showing the first site — use the selector in the top bar to change site." : ""}
       </p>
       {isAdmin ? <ImportRankings siteId={selected.id} /> : null}

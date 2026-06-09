@@ -1,12 +1,24 @@
 import { rankCell } from "@/lib/ranking/rank-cell.mjs";
 import type { GridRow } from "@/lib/data/ranking";
 
-const COLOR: Record<string, string> = {
-  green: "bg-green-600 text-white",
-  amber: "bg-amber-500 text-white",
-  red: "bg-red-500/90 text-white",
-};
-const ARROW: Record<string, string> = { up: "▲", down: "▼", new: "NEW", none: "" };
+function Cell({ position, prev }: { position: number | null; prev: number | null }) {
+  const cell = rankCell(position, prev);
+  if (!cell.ranked) {
+    return <span className="text-xs text-slate-400">Not in top 100</span>;
+  }
+  return (
+    <span className="inline-flex items-baseline gap-1">
+      <span className="tabular-nums font-medium text-slate-800">{cell.label}</span>
+      {cell.dir === "up" && (
+        <span className="text-xs font-semibold text-green-600">↑{cell.prev != null ? ` (${cell.prev})` : ""}</span>
+      )}
+      {cell.dir === "down" && (
+        <span className="text-xs font-semibold text-red-600">↓{cell.prev != null ? ` (${cell.prev})` : ""}</span>
+      )}
+      {cell.dir === "new" && <span className="text-xs font-semibold text-green-600">↑</span>}
+    </span>
+  );
+}
 
 export function RankingGrid({ rows }: { rows: GridRow[] }) {
   if (rows.length === 0) return <p className="text-sm text-slate-500">No ranking data for this week.</p>;
@@ -18,28 +30,29 @@ export function RankingGrid({ rows }: { rows: GridRow[] }) {
   const byKey = new Map(rows.map((r) => [`${r.keyword}|${r.country}`, r]));
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-      <table className="w-full text-sm">
+    <div className="overflow-x-auto rounded-lg border border-slate-300">
+      <table className="w-full border-collapse text-sm">
         <thead>
-          <tr className="border-b border-slate-200 text-left text-slate-500">
-            <th className="px-3 py-2 font-medium">Keyword</th>
-            {countries.map((c) => (<th key={c} className="px-3 py-2 text-center font-medium">{c}</th>))}
+          <tr>
+            <th className="border border-slate-200 bg-slate-50 px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Keyword
+            </th>
+            {countries.map((c) => (
+              <th key={c} className="border border-slate-200 bg-slate-50 px-3 py-2 text-center text-xs font-semibold uppercase tracking-wide text-slate-500">
+                {c}
+              </th>
+            ))}
           </tr>
         </thead>
         <tbody>
           {keywords.map((kw) => (
-            <tr key={kw} className="border-b border-slate-100">
-              <td className="px-3 py-2 font-medium text-slate-800">{kw}</td>
+            <tr key={kw} className="even:bg-slate-50/40">
+              <td className="border border-slate-200 px-3 py-1.5 whitespace-nowrap text-slate-800">{kw}</td>
               {countries.map((c) => {
                 const row = byKey.get(`${kw}|${c}`);
-                const cell = rankCell(row?.position ?? null, row?.prev_position ?? null);
-                const arrow = ARROW[cell.dir];
                 return (
-                  <td key={c} className="px-3 py-2 text-center">
-                    <span className={`inline-flex min-w-[3.5rem] items-center justify-center gap-1 rounded-md px-2 py-1 text-xs font-semibold ${COLOR[cell.color]}`}>
-                      {cell.label}
-                      {arrow ? <span className="opacity-90">{arrow}{cell.delta != null ? ` ${cell.delta}` : ""}</span> : null}
-                    </span>
+                  <td key={c} className="border border-slate-200 px-3 py-1.5 text-center">
+                    <Cell position={row?.position ?? null} prev={row?.prev_position ?? null} />
                   </td>
                 );
               })}
