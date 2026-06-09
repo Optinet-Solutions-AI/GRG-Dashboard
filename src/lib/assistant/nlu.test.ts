@@ -42,6 +42,13 @@ describe("parseQuery (tokenless NLU)", () => {
     expect(p("which keywords should I prioritise?").topics).toContain("focus");
   });
 
+  it("does not mistake 'Qatar' for the QA topic", () => {
+    const q = p("what should I focus on in Qatar?");
+    expect(q.country).toBe("QA");
+    expect(q.topics).toContain("focus");
+    expect(q.topics).not.toContain("qa");
+  });
+
   it("handles compound multi-topic questions", () => {
     const q = p("give me a summary of rankings and backlinks");
     expect(q.topics).toContain("ranking");

@@ -35,7 +35,7 @@ const TOPIC_KEYWORDS: { topic: Topic; words: string[] }[] = [
   { topic: "backlinks", words: ["backlink", "back link", "link building", "links built", "referring domain", "anchor", "link profile", "off-page", "off page", "links"] },
   { topic: "seo", words: ["seo score", "on-page", "onpage", "on page", "rankmath", "seo audit", "seo health", "my seo", "seo status", "technical seo", "seo result"] },
   { topic: "health", words: ["health", "domain rating", "domain authority", "organic traffic", "organic keyword", "traffic", "ahrefs", "visibility", " dr ", "authority"] },
-  { topic: "qa", words: ["qa", "checklist", "quality assurance", "pages crawled", "page check", "brand protection"] },
+  { topic: "qa", words: [" qa ", "checklist", "quality assurance", "qa page", "pages crawled", "page check", "brand protection"] },
   { topic: "ranking", words: ["rank", "ranking", "position", "serp", "keyword", "top 10", "top ten", "top 3", "top three", "top 100", "page one", "page 1", "google position", "week", "changed", "moved", "movement"] },
 ];
 
