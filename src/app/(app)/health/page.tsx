@@ -1,8 +1,9 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { getCurrentRole, isAdminRole } from "@/lib/auth";
 import { signScreenshots } from "@/lib/storage";
-import { updateHealthNumbers } from "./actions";
+import { updateHealthNumbers, addHealthPeriod } from "./actions";
 import { HealthNumberForm } from "@/components/sections/HealthNumberForm";
+import { AddHealthPeriod } from "@/components/sections/AddHealthPeriod";
 
 const METRICS = [
   ["domain_rating", "Domain Rating"],
@@ -17,6 +18,11 @@ export default async function HealthPage({ searchParams }: { searchParams: Promi
   const supabase = await createServerSupabaseClient();
   const isAdmin = isAdminRole(await getCurrentRole());
 
+  const { data: siteList } = await supabase.from("sites").select("id, display_name").order("sort_order");
+  const selectedSite = (siteList ?? []).find((s) => s.id === site) ?? (siteList ?? [])[0];
+  const today = new Date();
+  const defaultDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+
   let q = supabase
     .from("health_snapshots")
     .select("id, domain_rating, referring_domains, total_visitors, organic_traffic, organic_keywords, screenshot_path, site_id, sites!inner(display_name, sort_order)")
@@ -30,6 +36,9 @@ export default async function HealthPage({ searchParams }: { searchParams: Promi
   return (
     <div className="space-y-5">
       <h1 className="text-xl font-bold">Health Score (Ahrefs)</h1>
+      {isAdmin && selectedSite ? (
+        <AddHealthPeriod defaultDate={defaultDate} action={addHealthPeriod.bind(null, selectedSite.id)} />
+      ) : null}
       {rows.map((r) => (
         <div key={r.id} className="rounded-xl border border-slate-200 bg-white p-4">
           <div className="mb-3 font-semibold text-slate-900">{r.sites.display_name}</div>
