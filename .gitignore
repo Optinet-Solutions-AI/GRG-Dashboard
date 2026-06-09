@@ -57,3 +57,4 @@ screenshots/
 
 # client data exports (rank-tracker CSVs, etc.)
 *.csv
+.tmp/
