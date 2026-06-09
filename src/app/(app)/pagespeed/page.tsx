@@ -8,25 +8,65 @@ import { PsiAutofillButton } from "@/components/sources/PsiAutofillButton";
 // PSI runs Lighthouse for mobile + desktop (~30-60s); give the serverless function room.
 export const maxDuration = 60;
 
-function NumChip({ n }: { n: number | null }) {
-  const color = n == null ? "bg-slate-200 text-slate-600" : n >= 90 ? "bg-green-600 text-white" : n >= 50 ? "bg-amber-500 text-white" : "bg-red-500 text-white";
-  return <span className={`inline-flex min-w-[2rem] items-center justify-center rounded-md px-2 py-0.5 text-xs font-semibold ${color}`}>{n ?? "—"}</span>;
+function gaugeColor(n: number | null): string {
+  if (n == null) return "#cbd5e1";
+  return n >= 90 ? "#16a34a" : n >= 50 ? "#f59e0b" : "#dc2626";
 }
+
+function Gauge({ label, score }: { label: string; score: number | null }) {
+  const v = score ?? 0;
+  const color = gaugeColor(score);
+  return (
+    <div className="flex flex-col items-center gap-1">
+      <div className="relative h-14 w-14 rounded-full" style={{ background: `conic-gradient(${color} ${v * 3.6}deg, #e2e8f0 0deg)` }}>
+        <div className="absolute inset-[3px] flex items-center justify-center rounded-full bg-white text-sm font-bold" style={{ color }}>
+          {score ?? "—"}
+        </div>
+      </div>
+      <span className="text-center text-[10px] uppercase leading-tight tracking-wide text-slate-500">{label}</span>
+    </div>
+  );
+}
+
+function DeviceReport({
+  label, perf, a11y, bp, seo, shot,
+}: { label: string; perf: number | null; a11y: number | null; bp: number | null; seo: number | null; shot?: string }) {
+  return (
+    <div>
+      <div className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">{label} report</div>
+      <div className="flex flex-wrap gap-3">
+        <Gauge label="Performance" score={perf} />
+        <Gauge label="Accessibility" score={a11y} />
+        <Gauge label="Best Practices" score={bp} />
+        <Gauge label="SEO" score={seo} />
+      </div>
+      {shot ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={shot} alt={`${label} screenshot`} className="mt-3 w-36 rounded-lg border border-slate-200" />
+      ) : null}
+    </div>
+  );
+}
+
+type Row = {
+  id: string;
+  date: string;
+  mobile_score: number | null; mobile_accessibility: number | null; mobile_best_practices: number | null; mobile_seo: number | null;
+  desktop_score: number | null; desktop_accessibility: number | null; desktop_best_practices: number | null; desktop_seo: number | null;
+  mobile_screenshot_path: string | null; desktop_screenshot_path: string | null;
+  pagespeed_urls: { url: string; sites: { display_name: string } };
+};
 
 export default async function PageSpeedPage({ searchParams }: { searchParams: Promise<{ site?: string }> }) {
   const { site } = await searchParams;
   const supabase = await createServerSupabaseClient();
   let q = supabase
     .from("pagespeed_entries")
-    .select("id, mobile_score, desktop_score, mobile_screenshot_path, desktop_screenshot_path, pagespeed_urls!inner(url, site_id, sites!inner(display_name))")
+    .select("id, date, mobile_score, mobile_accessibility, mobile_best_practices, mobile_seo, desktop_score, desktop_accessibility, desktop_best_practices, desktop_seo, mobile_screenshot_path, desktop_screenshot_path, pagespeed_urls!inner(url, site_id, sites!inner(display_name))")
     .order("date", { ascending: false });
   if (site) q = q.eq("pagespeed_urls.site_id", site);
   const { data } = await q;
-  const rows = (data ?? []) as unknown as Array<{
-    id: string; mobile_score: number | null; desktop_score: number | null;
-    mobile_screenshot_path: string | null; desktop_screenshot_path: string | null;
-    pagespeed_urls: { url: string; sites: { display_name: string } };
-  }>;
+  const rows = (data ?? []) as unknown as Row[];
 
   const signed = await signScreenshots(rows.flatMap((r) => [r.mobile_screenshot_path, r.desktop_screenshot_path]));
 
@@ -48,10 +88,14 @@ export default async function PageSpeedPage({ searchParams }: { searchParams: Pr
     const today = new Date();
     const defaultDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
     entry = (
-      <>
-        <PsiAutofillButton urls={psiUrls} />
-        <AddPagespeedPeriod urls={urlRows} defaultDate={defaultDate} action={addPagespeedPeriod} />
-      </>
+      <details className="rounded-xl border border-slate-200 bg-white p-4">
+        <summary className="cursor-pointer text-sm font-semibold text-slate-800">Update PageSpeed (admin)</summary>
+        <p className="mt-2 text-xs text-slate-500">Auto-fill pulls all four scores from Google PageSpeed Insights. Auto-refreshes every 15 days.</p>
+        <div className="mt-3 space-y-3">
+          <PsiAutofillButton urls={psiUrls} />
+          <AddPagespeedPeriod urls={urlRows} defaultDate={defaultDate} action={addPagespeedPeriod} />
+        </div>
+      </details>
     );
   }
 
@@ -61,22 +105,15 @@ export default async function PageSpeedPage({ searchParams }: { searchParams: Pr
       {entry}
       {rows.map((r) => (
         <div key={r.id} className="rounded-xl border border-slate-200 bg-white p-4">
-          <div className="mb-2">
+          <div className="mb-3 flex items-center justify-between">
             <a href={r.pagespeed_urls.url} target="_blank" rel="noreferrer" className="font-semibold text-slate-900 hover:underline">{r.pagespeed_urls.url}</a>
+            <span className="text-xs text-slate-500">{r.date}</span>
           </div>
-          <div className="grid gap-4 md:grid-cols-2">
-            {([["Mobile", r.mobile_screenshot_path, r.mobile_score], ["Desktop", r.desktop_screenshot_path, r.desktop_score]] as const).map(([label, path, score]) => (
-              <div key={label}>
-                <div className="mb-1 flex items-center gap-2">
-                  <span className="text-xs font-medium uppercase text-slate-500">{label} report</span>
-                  <NumChip n={score} />
-                </div>
-                {path && signed.get(path) ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={signed.get(path)} alt={`${label} PageSpeed report`} className="w-full rounded-lg border border-slate-200" />
-                ) : <div className="rounded-lg border border-dashed border-slate-300 p-6 text-center text-sm text-slate-400">No screenshot</div>}
-              </div>
-            ))}
+          <div className="grid gap-6 md:grid-cols-2">
+            <DeviceReport label="Mobile" perf={r.mobile_score} a11y={r.mobile_accessibility} bp={r.mobile_best_practices} seo={r.mobile_seo}
+              shot={r.mobile_screenshot_path ? signed.get(r.mobile_screenshot_path) : undefined} />
+            <DeviceReport label="Desktop" perf={r.desktop_score} a11y={r.desktop_accessibility} bp={r.desktop_best_practices} seo={r.desktop_seo}
+              shot={r.desktop_screenshot_path ? signed.get(r.desktop_screenshot_path) : undefined} />
           </div>
         </div>
       ))}

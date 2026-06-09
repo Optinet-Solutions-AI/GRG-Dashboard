@@ -1,20 +1,34 @@
 import "server-only";
 import type { PageSpeedSource, PageSpeedResult, Strategy } from "./types";
-import { parsePsiScore, parsePsiScreenshot } from "./parse-psi";
+import { parsePsiCategories, parsePsiScreenshot } from "./parse-psi";
 
 const ENDPOINT = "https://www.googleapis.com/pagespeedonline/v5/runPagespeed";
+const CATEGORIES = ["performance", "accessibility", "best-practices", "seo"] as const;
+
+const EMPTY = (strategy: Strategy): PageSpeedResult => ({
+  strategy, score: null, accessibility: null, bestPractices: null, seo: null, screenshot: null,
+});
 
 async function fetchStrategy(url: string, strategy: Strategy): Promise<PageSpeedResult> {
-  const params = new URLSearchParams({ url, strategy, category: "performance" });
+  const params = new URLSearchParams({ url, strategy });
+  for (const c of CATEGORIES) params.append("category", c);
   const key = process.env.PAGESPEED_API_KEY;
   if (key) params.set("key", key);
   try {
     const res = await fetch(`${ENDPOINT}?${params.toString()}`, { cache: "no-store" });
-    if (!res.ok) return { strategy, score: null, screenshot: null };
+    if (!res.ok) return EMPTY(strategy);
     const json = await res.json();
-    return { strategy, score: parsePsiScore(json), screenshot: parsePsiScreenshot(json) };
+    const c = parsePsiCategories(json);
+    return {
+      strategy,
+      score: c.performance,
+      accessibility: c.accessibility,
+      bestPractices: c.bestPractices,
+      seo: c.seo,
+      screenshot: parsePsiScreenshot(json),
+    };
   } catch {
-    return { strategy, score: null, screenshot: null };
+    return EMPTY(strategy);
   }
 }
 

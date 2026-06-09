@@ -48,8 +48,14 @@ export async function autofillPagespeed(
   const record: Record<string, string | number | null> = {
     pagespeed_url_id: pagespeedUrlId,
     date,
-    mobile_score: mobile,
-    desktop_score: desktop,
+    mobile_score: m?.score ?? null,
+    mobile_accessibility: m?.accessibility ?? null,
+    mobile_best_practices: m?.bestPractices ?? null,
+    mobile_seo: m?.seo ?? null,
+    desktop_score: d?.score ?? null,
+    desktop_accessibility: d?.accessibility ?? null,
+    desktop_best_practices: d?.bestPractices ?? null,
+    desktop_seo: d?.seo ?? null,
   };
   // Capture the page screenshots the PSI API returns (best-effort; scores still save if upload fails).
   for (const [strategy, result] of [["mobile", m], ["desktop", d]] as const) {
