@@ -63,6 +63,7 @@ export default async function QaPage({ searchParams }: { searchParams: Promise<{
   const elementList = (elements ?? []) as Array<{ id: string; name: string }>;
   const pages = ((pageRows ?? []) as Array<{ id: string; url: string; label: string | null }>).map((p) => ({
     id: p.id,
+    url: p.url,
     display: pageLabel(p.url, p.label),
   }));
   const byCell = new Map<string, boolean>();
@@ -88,7 +89,9 @@ export default async function QaPage({ searchParams }: { searchParams: Promise<{
           <tbody>
             {pages.map((p) => (
               <tr key={p.id} className="border-b border-slate-100 hover:bg-slate-50/60">
-                <td className="max-w-[24rem] truncate px-3 py-2 text-slate-700">{p.display}</td>
+                <td className="max-w-[24rem] truncate px-3 py-2">
+                  <a href={p.url} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline" title={p.url}>{p.display}</a>
+                </td>
                 {elementList.map((e) => {
                   const passed = byCell.get(`${p.id}|${e.id}`);
                   return (

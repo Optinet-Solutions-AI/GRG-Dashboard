@@ -136,15 +136,75 @@ async function answerRankingChanges(sb: SB, siteId?: string | null): Promise<str
   return msg;
 }
 
+async function resolveSite(sb: SB, siteId?: string | null): Promise<string | null> {
+  if (siteId) return siteId;
+  const { data } = await sb.from("sites").select("id").order("sort_order").limit(1);
+  return ((data ?? [])[0] as { id: string } | undefined)?.id ?? null;
+}
+
+async function answerFocusKeywords(sb: SB, siteId?: string | null): Promise<string> {
+  const { data: weeks } = await sb.rpc("ranking_weeks");
+  const wk = (weeks ?? []) as { week_date: string }[];
+  if (wk.length === 0) return "No ranking data yet — import an Ahrefs export first.";
+  const latest = wk[0].week_date;
+  const site = await resolveSite(sb, siteId);
+  if (!site) return "No site configured.";
+  const { data } = await sb.rpc("ranking_grid", { p_site_id: site, p_week: latest });
+  const rows = (data ?? []) as Array<{ keyword: string; country: string; position: number | null }>;
+  if (rows.length === 0) return `No ranking rows for the latest week (${latest}).`;
+
+  const notRanking = rows.filter((r) => r.position == null).map((r) => ({ kw: r.keyword, c: r.country, why: "not ranking" }));
+  const outside = rows
+    .filter((r) => r.position != null && r.position > 10)
+    .sort((a, b) => (b.position ?? 0) - (a.position ?? 0))
+    .map((r) => ({ kw: r.keyword, c: r.country, why: `#${r.position}` }));
+  const picks = [...notRanking, ...outside].slice(0, 5);
+  if (picks.length === 0) return "Every tracked keyword is already in the top 10 — focus on holding those positions and earning featured snippets.";
+  const list = picks.map((p) => `“${p.kw}” (${p.c}, ${p.why})`).join("; ");
+  return `Prioritise the weakest keywords first: ${list}. They're furthest from page one, so they have the most upside.`;
+}
+
+async function answerBacklinksSummary(sb: SB, siteId?: string | null): Promise<string> {
+  let q = sb.from("backlinks").select("date, indexed, source_site, site_id").limit(5000);
+  if (siteId) q = q.eq("site_id", siteId);
+  const { data } = await q;
+  const rows = (data ?? []) as Array<{ date: string; indexed: string | null; source_site: string | null }>;
+  if (rows.length === 0) return "No backlinks recorded yet — sync from the Google Sheet on the Backlinks page.";
+  const total = rows.length;
+  const indexed = rows.filter((r) => r.indexed && !/^(no|not)/i.test(r.indexed.trim())).length;
+  const domains = new Set(rows.map((r) => r.source_site).filter(Boolean)).size;
+  const month = todayLocal().slice(0, 7);
+  const built = rows.filter((r) => (r.date ?? "").slice(0, 7) === month).length;
+  return `Backlinks: ${total} total from ${domains} source domain${domains === 1 ? "" : "s"}, ${indexed} indexed (${Math.round((indexed / total) * 100)}%), ${built} built this month.`;
+}
+
+async function answerSeoSummary(sb: SB, siteId?: string | null): Promise<string> {
+  let q = sb
+    .from("seo_scores")
+    .select("date, seo_score, passed_tests, warnings, failed_tests, site_id, sites!inner(display_name)")
+    .order("date", { ascending: false })
+    .limit(1);
+  if (siteId) q = q.eq("site_id", siteId);
+  const { data } = await q;
+  const r = (data ?? [])[0] as unknown as
+    | { date: string; seo_score: number | null; passed_tests: number | null; warnings: number | null; failed_tests: number | null; sites: { display_name: string } }
+    | undefined;
+  if (!r) return "No SEO score recorded yet — an admin can add one on the SEO page.";
+  return `Latest SEO score for “${r.sites.display_name}” (${r.date}): ${r.seo_score ?? "—"}/100 — ${r.passed_tests ?? 0} passed, ${r.warnings ?? 0} warnings, ${r.failed_tests ?? 0} failed.`;
+}
+
 export const ruleProvider: InsightProvider = {
   id: "rule",
   async answer(questionId: QuestionId, ctx: AssistantContext): Promise<string> {
     const sb = await createServerSupabaseClient();
     switch (questionId) {
       case "ranking-changes": return answerRankingChanges(sb, ctx.siteId);
+      case "focus-keywords": return answerFocusKeywords(sb, ctx.siteId);
       case "top-mover-week": return answerTopMover(sb);
       case "missing-or-stale": return answerStale(sb);
       case "pagespeed-trend": return answerPageSpeedTrend(sb);
+      case "backlinks-summary": return answerBacklinksSummary(sb, ctx.siteId);
+      case "seo-summary": return answerSeoSummary(sb, ctx.siteId);
       case "health-summary": return answerHealthSummary(sb, ctx.siteId);
       default: return "I don't have an answer for that question.";
     }

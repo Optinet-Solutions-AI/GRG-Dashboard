@@ -6,7 +6,7 @@ import { askAssistant } from "@/app/(app)/assistant/actions";
 type Msg = { role: "user" | "bot"; text: string };
 
 const GREETING =
-  "Hi! Ask me about your rankings, PageSpeed, site health, or how fresh the data is.";
+  "Hi! Ask me anything about your data — e.g. “what changed in the rankings?”, “which keywords should I focus on?”, “how many backlinks do we have?”, or “what's my SEO score?”";
 
 export function AssistantWidget() {
   const [open, setOpen] = useState(false);
