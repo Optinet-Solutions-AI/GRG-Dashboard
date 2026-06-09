@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { syncBacklinksFromSheet } from "@/lib/backlinks/sync";
 
 export async function addBacklink(_prev: { error?: string } | undefined, formData: FormData) {
   await requireAdmin();
@@ -59,4 +60,18 @@ export async function deleteBacklinkSummary(id: string): Promise<void> {
   const supabase = await createServerSupabaseClient();
   await supabase.from("backlink_summary").delete().eq("id", id);
   revalidatePath("/backlinks");
+}
+
+export async function syncBacklinks(
+  _prev: { ok?: boolean; message?: string; error?: string } | undefined,
+  _formData: FormData,
+): Promise<{ ok?: boolean; message?: string; error?: string }> {
+  await requireAdmin();
+  try {
+    const r = await syncBacklinksFromSheet();
+    revalidatePath("/backlinks");
+    return { ok: true, message: `Synced ${r.synced} backlinks from the sheet${r.date ? ` (latest ${r.date})` : ""}.` };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Sync failed." };
+  }
 }

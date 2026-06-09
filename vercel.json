@@ -1,5 +1,6 @@
 {
   "crons": [
-    { "path": "/api/cron/pagespeed", "schedule": "0 6 1,16 * *" }
+    { "path": "/api/cron/pagespeed", "schedule": "0 6 1,16 * *" },
+    { "path": "/api/cron/backlinks", "schedule": "0 7 * * *" }
   ]
 }
