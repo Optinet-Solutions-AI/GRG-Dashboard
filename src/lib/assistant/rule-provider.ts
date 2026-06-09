@@ -103,11 +103,45 @@ async function answerHealthSummary(sb: SB, siteId?: string | null): Promise<stri
   return `Latest health for “${r.sites.display_name}” (${r.date}): DR ${r.domain_rating ?? "—"}, ${r.referring_domains ?? "—"} referring domains, ${r.organic_traffic ?? "—"} organic traffic, ${r.organic_keywords ?? "—"} organic keywords.`;
 }
 
+async function answerRankingChanges(sb: SB, siteId?: string | null): Promise<string> {
+  const { data: weeks } = await sb.rpc("ranking_weeks");
+  const wk = (weeks ?? []) as { week_date: string }[];
+  if (wk.length === 0) return "No ranking data yet — import an Ahrefs export first.";
+  const latest = wk[0].week_date;
+  const prevWeek = wk[1]?.week_date;
+  let site = siteId ?? null;
+  if (!site) {
+    const { data: s } = await sb.from("sites").select("id").order("sort_order").limit(1);
+    site = ((s ?? [])[0] as { id: string } | undefined)?.id ?? null;
+  }
+  if (!site) return "No site configured.";
+  const { data } = await sb.rpc("ranking_grid", { p_site_id: site, p_week: latest });
+  const rows = (data ?? []) as Array<{ keyword: string; country: string; position: number | null; prev_position: number | null }>;
+  if (rows.length === 0) return `No ranking rows for the latest week (${latest}).`;
+  let improved = 0, dropped = 0, entered = 0, lost = 0;
+  let gain: { kw: string; c: string; from: number; to: number; d: number } | null = null;
+  let drop: { kw: string; c: string; from: number; to: number; d: number } | null = null;
+  for (const r of rows) {
+    const p = r.position, pr = r.prev_position;
+    if (p != null && pr != null) {
+      if (p < pr) { improved++; const d = pr - p; if (!gain || d > gain.d) gain = { kw: r.keyword, c: r.country, from: pr, to: p, d }; }
+      else if (p > pr) { dropped++; const d = p - pr; if (!drop || d > drop.d) drop = { kw: r.keyword, c: r.country, from: pr, to: p, d }; }
+    } else if (p != null) entered++;
+    else if (pr != null) lost++;
+  }
+  const span = prevWeek ? `${prevWeek} → ${latest}` : `as of ${latest}`;
+  let msg = `Ranking changes (${span}): ${improved} improved, ${dropped} dropped, ${entered} newly entered top 100, ${lost} dropped out.`;
+  if (gain) msg += ` Biggest gain: “${gain.kw}” (${gain.c}) ${gain.from}→${gain.to}.`;
+  if (drop) msg += ` Biggest drop: “${drop.kw}” (${drop.c}) ${drop.from}→${drop.to}.`;
+  return msg;
+}
+
 export const ruleProvider: InsightProvider = {
   id: "rule",
   async answer(questionId: QuestionId, ctx: AssistantContext): Promise<string> {
     const sb = await createServerSupabaseClient();
     switch (questionId) {
+      case "ranking-changes": return answerRankingChanges(sb, ctx.siteId);
       case "top-mover-week": return answerTopMover(sb);
       case "missing-or-stale": return answerStale(sb);
       case "pagespeed-trend": return answerPageSpeedTrend(sb);

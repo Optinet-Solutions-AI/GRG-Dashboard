@@ -1,25 +1,23 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { getRankingWeeks, getRankingGrid } from "@/lib/data/ranking";
 import { RankingGrid } from "@/components/ranking/RankingGrid";
-import { WeekSelector } from "@/components/ranking/WeekSelector";
 import { getCurrentRole, isAdminRole } from "@/lib/auth";
 import { addRankingWeek } from "./actions";
 import { AddRankingWeek } from "@/components/entry/AddRankingWeek";
 import { ImportRankings } from "@/components/ranking/ImportRankings";
+import { AssistantPanel } from "@/components/assistant/AssistantPanel";
 
-export default async function RankingPage({ searchParams }: { searchParams: Promise<{ site?: string; week?: string }> }) {
-  const { site, week } = await searchParams;
+export default async function RankingPage({ searchParams }: { searchParams: Promise<{ site?: string }> }) {
+  const { site } = await searchParams;
 
   const supabase = await createServerSupabaseClient();
   const { data: sites } = await supabase.from("sites").select("id, display_name").order("sort_order");
   const siteList = sites ?? [];
   const selected = siteList.find((s) => s.id === site) ?? siteList[0];
-
   if (!selected) return <p className="text-sm text-slate-500">No sites configured yet.</p>;
 
-  const weeks = await getRankingWeeks();
-  const currentWeek = week && weeks.includes(week) ? week : weeks[0];
-  const rows = currentWeek ? await getRankingGrid(selected.id, currentWeek) : [];
+  const weeks = (await getRankingWeeks()).slice(0, 26); // newest first, capped to ~6 months
+  const grids = await Promise.all(weeks.map((w) => getRankingGrid(selected.id, w)));
 
   const isAdmin = isAdminRole(await getCurrentRole());
   let entry = null;
@@ -48,15 +46,43 @@ export default async function RankingPage({ searchParams }: { searchParams: Prom
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-bold">Ranking — {selected.display_name}</h1>
-        {weeks.length ? <WeekSelector weeks={weeks} current={currentWeek} /> : null}
+        <span className="text-xs text-slate-500">{weeks.length} week{weeks.length === 1 ? "" : "s"} tracked · newest on top</span>
       </div>
       <p className="text-xs text-slate-500">
         <span className="font-semibold text-green-600">↑</span> improved · <span className="font-semibold text-red-600">↓</span> dropped vs previous week · (n) = previous position · grey = not in top 100.
         {!site ? " Showing the first site — use the selector in the top bar to change site." : ""}
       </p>
-      {isAdmin ? <ImportRankings siteId={selected.id} /> : null}
-      {entry}
-      <RankingGrid rows={rows} />
+
+      <AssistantPanel siteId={selected.id} />
+
+      {isAdmin ? (
+        <details className="rounded-xl border border-slate-200 bg-white p-4" open={weeks.length === 0}>
+          <summary className="cursor-pointer text-sm font-semibold text-slate-800">Update rankings (admin)</summary>
+          <p className="mt-2 text-xs text-slate-500">
+            Import detects the week automatically from the Ahrefs export&apos;s date and adds it as a new snapshot.
+          </p>
+          <div className="mt-3 space-y-3">
+            <ImportRankings siteId={selected.id} />
+            {entry}
+          </div>
+        </details>
+      ) : null}
+
+      {weeks.length === 0 ? (
+        <p className="text-sm text-slate-500">No ranking data yet{isAdmin ? " — import an Ahrefs export above." : "."}</p>
+      ) : (
+        <div className="max-h-[72vh] space-y-6 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50/40 p-3">
+          {weeks.map((w, i) => (
+            <section key={w}>
+              <div className="sticky top-0 -mx-3 mb-2 flex items-center gap-2 bg-slate-50/95 px-3 py-1 backdrop-blur">
+                <h2 className="text-sm font-semibold text-slate-800">Week of {w}</h2>
+                {i === 0 ? <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">Latest</span> : null}
+              </div>
+              <RankingGrid rows={grids[i]} />
+            </section>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

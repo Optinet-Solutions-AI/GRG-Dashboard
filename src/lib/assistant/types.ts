@@ -1,4 +1,5 @@
 export type QuestionId =
+  | "ranking-changes"
   | "top-mover-week"
   | "missing-or-stale"
   | "pagespeed-trend"
