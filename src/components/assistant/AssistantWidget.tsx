@@ -21,6 +21,36 @@ interface SpeechRecognitionLike {
 }
 type SRConstructor = new () => SpeechRecognitionLike;
 
+// Rank voices: natural/neural/online (best) > Google > generic > robotic SAPI.
+function voiceScore(name: string): number {
+  const n = name.toLowerCase();
+  if (/natural|neural|online/.test(n)) return 3;
+  if (/google/.test(n)) return 2;
+  if (/zira|david|mark|hazel|desktop|sapi/.test(n)) return 0;
+  return 1;
+}
+
+// Make a formatted answer readable by a TTS voice: drop emoji/bullets/symbols,
+// expand #/→/↑/↓ into words, and replace Arabic keyword text (which an English
+// voice mangles) with "a keyword".
+function toSpeech(text: string): string {
+  return text
+    .replace(/→/g, " to ")
+    .replace(/↑/g, " up ")
+    .replace(/↓/g, " down ")
+    .replace(/#(\d+)/g, "position $1")
+    .replace(/[“"'][؀-ۿ][؀-ۿ\s]*[”"']?/g, " a keyword ")
+    .replace(/[؀-ۿ][؀-ۿ\s]*/g, " a keyword ")
+    .replace(/•/g, " ")
+    .replace(/·/g, ", ")
+    .replace(/—/g, ", ")
+    .replace(/[“”]/g, "")
+    .replace(/[\u{1F000}-\u{1FAFF}\u{2190}-\u{21FF}\u{2300}-\u{27BF}\u{2B00}-\u{2BFF}\u{25A0}-\u{25FF}\u{FE00}-\u{FE0F}]/gu, " ")
+    .replace(/\s*\n+\s*/g, ". ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
 export function AssistantWidget() {
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
@@ -44,9 +74,11 @@ export function AssistantWidget() {
   useEffect(() => {
     if (typeof window === "undefined" || !window.speechSynthesis) return;
     const load = () => {
-      const en = window.speechSynthesis.getVoices().filter((v) => v.lang.toLowerCase().startsWith("en"));
+      const en = window.speechSynthesis.getVoices()
+        .filter((v) => v.lang.toLowerCase().startsWith("en"))
+        .sort((a, b) => voiceScore(b.name) - voiceScore(a.name) || a.name.localeCompare(b.name));
       setVoices(en);
-      setVoiceURI((cur) => cur || en.find((v) => /Google|Natural|Microsoft/i.test(v.name))?.voiceURI || en[0]?.voiceURI || "");
+      setVoiceURI((cur) => cur || en[0]?.voiceURI || "");
     };
     load();
     window.speechSynthesis.onvoiceschanged = load;
@@ -59,8 +91,12 @@ export function AssistantWidget() {
 
   function say(text: string) {
     if (typeof window === "undefined" || !window.speechSynthesis) return;
+    const clean = toSpeech(text);
+    if (!clean) return;
     window.speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text);
+    const u = new SpeechSynthesisUtterance(clean);
+    u.rate = 0.95;
+    u.lang = "en-US";
     const v = window.speechSynthesis.getVoices().find((x) => x.voiceURI === voiceURIRef.current);
     if (v) u.voice = v;
     window.speechSynthesis.speak(u);

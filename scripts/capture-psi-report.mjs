@@ -22,8 +22,20 @@ async function captureReport(page, url, strategy) {
   // NOTE: 3rd arg is options; the 2nd (arg) must be present or the timeout is ignored (defaults to 30s).
   await page.waitForFunction(() => /Captured at/i.test(document.body.innerText), null, { timeout: 150000 });
   await page.waitForTimeout(2500);
-  // Clip the report header + gauges + metrics + the "Captured at … Lighthouse" proof line.
-  return page.screenshot({ clip: { x: 0, y: 0, width: 1000, height: 660 }, type: "png" });
+  // Cut cleanly just below the 4 category gauges, not through the big gauge below them.
+  const cutY = await page.evaluate(() => {
+    const labels = ["Performance", "Accessibility", "Best Practices", "SEO"];
+    let maxBottom = 0;
+    for (const el of Array.from(document.querySelectorAll("*"))) {
+      if (el.children.length === 0 && labels.includes((el.textContent || "").trim())) {
+        const r = el.getBoundingClientRect();
+        if (r.top > 0 && r.top < 620 && r.bottom > maxBottom) maxBottom = r.bottom;
+      }
+    }
+    return maxBottom;
+  });
+  const height = cutY > 200 ? Math.min(Math.ceil(cutY + 28), 1400) : 540;
+  return page.screenshot({ clip: { x: 0, y: 0, width: 1000, height }, type: "png" });
 }
 
 async function main() {
