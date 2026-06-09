@@ -1,85 +1,92 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { getCurrentRole, isAdminRole } from "@/lib/auth";
+import { signScreenshots } from "@/lib/storage";
 import { addSeoPeriod } from "./actions";
 import { AddSeoPeriod } from "@/components/entry/AddSeoPeriod";
 
 function scoreColor(n: number | null): string {
-  if (n == null) return "bg-slate-200 text-slate-600";
-  if (n >= 90) return "bg-green-600 text-white";
-  if (n >= 70) return "bg-amber-500 text-white";
-  return "bg-red-500 text-white";
+  if (n == null) return "text-slate-400";
+  if (n >= 90) return "text-green-600";
+  if (n >= 70) return "text-amber-600";
+  return "text-red-600";
 }
-function Chip({ n }: { n: number | null }) {
-  return <span className={`inline-block min-w-[2.75rem] rounded-md px-2 py-1 text-center text-xs font-semibold ${scoreColor(n)}`}>{n ?? "—"}</span>;
-}
+
+type Row = {
+  id: string;
+  date: string;
+  seo_score: number | null;
+  passed_tests: number | null;
+  warnings: number | null;
+  failed_tests: number | null;
+  screenshot_path: string | null;
+  sites: { display_name: string };
+};
 
 export default async function SeoPage({ searchParams }: { searchParams: Promise<{ site?: string }> }) {
   const { site } = await searchParams;
   const supabase = await createServerSupabaseClient();
+  const isAdmin = isAdminRole(await getCurrentRole());
+
+  const { data: siteList } = await supabase.from("sites").select("id, display_name").order("sort_order");
+  const selectedSite = (siteList ?? []).find((s) => s.id === site) ?? (siteList ?? [])[0];
+  const today = new Date();
+  const defaultDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+
   let q = supabase
     .from("seo_scores")
-    .select("rankmath_analyzer, seo_homepage, health_score, date, site_id, sites!inner(display_name, sort_order)")
+    .select("id, date, seo_score, passed_tests, warnings, failed_tests, screenshot_path, site_id, sites!inner(display_name, sort_order)")
     .order("date", { ascending: false });
   if (site) q = q.eq("site_id", site);
   const { data } = await q;
+  const rows = (data ?? []) as unknown as Row[];
 
-  // latest per site
-  const seen = new Set<string>();
-  const rows = (data ?? []).filter((r: Record<string, unknown>) => {
-    const id = r.site_id as string;
-    if (seen.has(id)) return false;
-    seen.add(id);
-    return true;
-  });
-
-  const isAdmin = isAdminRole(await getCurrentRole());
-  let entry = null;
-  if (isAdmin) {
-    const { data: allSites } = await supabase.from("sites").select("id, display_name").order("sort_order");
-    const { data: latestSeo } = await supabase.from("seo_scores").select("site_id, rankmath_analyzer, seo_homepage, health_score, date").order("date", { ascending: false });
-    const latestBySite = new Map<string, { rankmath_analyzer: number | null; seo_homepage: number | null; health_score: number | null }>();
-    for (const r of (latestSeo ?? []) as Array<{ site_id: string; rankmath_analyzer: number | null; seo_homepage: number | null; health_score: number | null }>) {
-      if (!latestBySite.has(r.site_id)) latestBySite.set(r.site_id, r);
-    }
-    const siteRows = ((allSites ?? []) as Array<{ id: string; display_name: string }>).map((s) => {
-      const v = latestBySite.get(s.id);
-      return { id: s.id, display_name: s.display_name, rankmath: v?.rankmath_analyzer ?? null, homepage: v?.seo_homepage ?? null, health: v?.health_score ?? null };
-    });
-    const today = new Date();
-    const defaultDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
-    entry = <AddSeoPeriod sites={siteRows} defaultDate={defaultDate} action={addSeoPeriod} />;
-  }
+  const signed = await signScreenshots(rows.map((r) => r.screenshot_path));
 
   return (
-    <div className="space-y-4">
-      <h1 className="text-xl font-bold">SEO Score</h1>
-      {entry}
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-slate-200 text-left text-slate-500">
-              <th className="px-4 py-2 font-medium">Site</th>
-              <th className="px-4 py-2 font-medium">Rankmath Analyzer</th>
-              <th className="px-4 py-2 font-medium">SEO / Homepages</th>
-              <th className="px-4 py-2 font-medium">Health Score</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r: Record<string, unknown>, i: number) => {
-              const s = r.sites as { display_name?: string } | null;
-              return (
-                <tr key={i} className="border-b border-slate-100">
-                  <td className="px-4 py-2 font-medium text-slate-800">{s?.display_name ?? "—"}</td>
-                  <td className="px-4 py-2"><Chip n={r.rankmath_analyzer as number | null} /></td>
-                  <td className="px-4 py-2"><Chip n={r.seo_homepage as number | null} /></td>
-                  <td className="px-4 py-2"><Chip n={r.health_score as number | null} /></td>
-                </tr>
-              );
-            })}
-            {rows.length === 0 ? <tr><td colSpan={4} className="px-4 py-3 text-slate-500">No SEO data.</td></tr> : null}
-          </tbody>
-        </table>
-      </div>
+    <div className="space-y-5">
+      <h1 className="text-xl font-bold">SEO Score (Rankmath)</h1>
+      {isAdmin && selectedSite ? (
+        <AddSeoPeriod defaultDate={defaultDate} action={addSeoPeriod.bind(null, selectedSite.id)} />
+      ) : null}
+      {rows.map((r) => (
+        <div key={r.id} className="rounded-xl border border-slate-200 bg-white p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <span className="font-semibold text-slate-900">{r.sites.display_name}</span>
+            <span className="text-xs text-slate-500">{r.date}</span>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-3">
+              <div className="flex items-baseline gap-2">
+                <span className={`text-4xl font-bold ${scoreColor(r.seo_score)}`}>{r.seo_score ?? "—"}</span>
+                <span className="text-sm text-slate-400">/ 100 SEO score</span>
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-sm">
+                <div className="rounded-md bg-green-50 px-3 py-2 text-center">
+                  <div className="font-semibold text-green-700">{r.passed_tests ?? "—"}</div>
+                  <div className="text-xs text-slate-500">Passed</div>
+                </div>
+                <div className="rounded-md bg-amber-50 px-3 py-2 text-center">
+                  <div className="font-semibold text-amber-700">{r.warnings ?? "—"}</div>
+                  <div className="text-xs text-slate-500">Warnings</div>
+                </div>
+                <div className="rounded-md bg-red-50 px-3 py-2 text-center">
+                  <div className="font-semibold text-red-700">{r.failed_tests ?? "—"}</div>
+                  <div className="text-xs text-slate-500">Failed</div>
+                </div>
+              </div>
+            </div>
+            <div>
+              {r.screenshot_path && signed.get(r.screenshot_path) ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={signed.get(r.screenshot_path)} alt={`SEO analyzer for ${r.sites.display_name}`} className="w-full rounded-lg border border-slate-200" />
+              ) : (
+                <div className="rounded-lg border border-dashed border-slate-300 p-6 text-center text-sm text-slate-400">No screenshot</div>
+              )}
+            </div>
+          </div>
+        </div>
+      ))}
+      {rows.length === 0 ? <p className="text-sm text-slate-500">No SEO data yet.</p> : null}
     </div>
   );
 }

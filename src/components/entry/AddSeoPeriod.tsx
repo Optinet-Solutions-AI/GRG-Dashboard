@@ -1,43 +1,61 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState } from "react";
+import { ScreenshotInput } from "@/components/ScreenshotInput";
 
-type SiteRow = { id: string; display_name: string; rankmath: number | null; homepage: number | null; health: number | null };
 type State = { error?: string } | undefined;
 
-export function AddSeoPeriod({ sites, defaultDate, action }: {
-  sites: SiteRow[]; defaultDate: string; action: (prev: State, formData: FormData) => Promise<State>;
+export function AddSeoPeriod({
+  defaultDate,
+  action,
+}: {
+  defaultDate: string;
+  action: (prev: State, formData: FormData) => Promise<State>;
 }) {
-  const [open, setOpen] = useState(false);
   const [state, formAction, pending] = useActionState(action, undefined);
-  if (!open) return <button onClick={() => setOpen(true)} className="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white">+ Add new period</button>;
   return (
-    <form action={formAction} className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
-      <div className="flex items-center gap-2">
-        <label htmlFor="date" className="text-sm text-slate-600">Date</label>
-        <input id="date" name="date" type="date" defaultValue={defaultDate} required className="rounded-md border border-slate-300 px-2 py-1.5 text-sm" />
-        <span className="text-xs text-slate-500">Pre-filled from the latest period.</span>
-      </div>
-      <table className="text-sm">
-        <thead><tr className="text-slate-500"><th className="px-2 py-1 text-left">Site</th><th className="px-2 py-1">Rankmath</th><th className="px-2 py-1">Homepage</th><th className="px-2 py-1">Health</th></tr></thead>
-        <tbody>
-          {sites.map((s) => (
-            <tr key={s.id}>
-              <td className="px-2 py-1 font-medium text-slate-700">{s.display_name}</td>
-              {(["rankmath", "homepage", "health"] as const).map((f) => (
-                <td key={f} className="px-1 py-1">
-                  <input name={`${f}__${s.id}`} defaultValue={s[f] ?? ""} inputMode="numeric" className="w-16 rounded border border-slate-300 px-1.5 py-1 text-center" />
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <div className="flex items-center gap-3">
-        <button type="submit" disabled={pending} className="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50">{pending ? "Saving…" : "Save period"}</button>
-        <button type="button" onClick={() => setOpen(false)} className="text-sm text-slate-500 hover:underline">Cancel</button>
-        {state?.error ? <span className="text-sm text-red-600">{state.error}</span> : null}
-      </div>
-    </form>
+    <details className="rounded-xl border border-slate-200 bg-white p-4">
+      <summary className="cursor-pointer text-sm font-semibold text-slate-800">+ Add SEO period (Rankmath analyzer)</summary>
+      <p className="mt-2 text-xs text-slate-500">
+        Enter the Rankmath SEO Analyzer numbers and upload its screenshot. Re-saving the same date updates that period.
+      </p>
+      <form action={formAction} className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-5">
+        <label className="flex flex-col text-xs text-slate-600">
+          Date
+          <input name="date" type="date" defaultValue={defaultDate}
+            className="mt-1 rounded-md border border-slate-300 px-2 py-1 text-sm text-slate-900" />
+        </label>
+        <label className="flex flex-col text-xs text-slate-600">
+          SEO Score (/100)
+          <input name="seo_score" type="number" min={0} max={100}
+            className="mt-1 rounded-md border border-slate-300 px-2 py-1 text-sm text-slate-900" />
+        </label>
+        <label className="flex flex-col text-xs text-slate-600">
+          Passed
+          <input name="passed_tests" type="number"
+            className="mt-1 rounded-md border border-slate-300 px-2 py-1 text-sm text-slate-900" />
+        </label>
+        <label className="flex flex-col text-xs text-slate-600">
+          Warnings
+          <input name="warnings" type="number"
+            className="mt-1 rounded-md border border-slate-300 px-2 py-1 text-sm text-slate-900" />
+        </label>
+        <label className="flex flex-col text-xs text-slate-600">
+          Failed
+          <input name="failed_tests" type="number"
+            className="mt-1 rounded-md border border-slate-300 px-2 py-1 text-sm text-slate-900" />
+        </label>
+        <div className="col-span-2 md:col-span-5">
+          <ScreenshotInput name="screenshot" label="Rankmath SEO Analyzer screenshot" />
+        </div>
+        <div className="col-span-2 flex items-center gap-3 md:col-span-5">
+          <button type="submit" disabled={pending}
+            className="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50">
+            {pending ? "Saving…" : "Save SEO period"}
+          </button>
+          {state?.error ? <span className="text-sm text-red-600">{state.error}</span> : null}
+        </div>
+      </form>
+    </details>
   );
 }

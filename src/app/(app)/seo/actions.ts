@@ -3,35 +3,51 @@
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { uploadScreenshot } from "@/lib/storage";
 
-function toScore(raw: FormDataEntryValue | null): number | null {
+function toInt(raw: FormDataEntryValue | null): number | null {
   const s = String(raw ?? "").trim();
   if (s === "") return null;
   const n = parseInt(s, 10);
-  return Number.isInteger(n) && n >= 0 && n <= 100 ? n : null;
+  return Number.isInteger(n) ? n : null;
 }
 
-export async function addSeoPeriod(_prev: { error?: string } | undefined, formData: FormData) {
+export async function addSeoPeriod(siteId: string, _prev: { error?: string } | undefined, formData: FormData) {
   await requireAdmin();
+  if (!siteId) return { error: "Missing site." };
   const date = String(formData.get("date") ?? "").trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { error: "Pick a valid date." };
 
-  const bySite = new Map<string, { rankmath_analyzer: number | null; seo_homepage: number | null; health_score: number | null }>();
-  for (const [key, value] of formData.entries()) {
-    const m = key.match(/^(rankmath|homepage|health)__([0-9a-f-]+)$/);
-    if (!m) continue;
-    const rec = bySite.get(m[2]) ?? { rankmath_analyzer: null, seo_homepage: null, health_score: null };
-    if (m[1] === "rankmath") rec.rankmath_analyzer = toScore(value);
-    if (m[1] === "homepage") rec.seo_homepage = toScore(value);
-    if (m[1] === "health") rec.health_score = toScore(value);
-    bySite.set(m[2], rec);
-  }
-  const payload = [...bySite.entries()].map(([site_id, v]) => ({ site_id, date, ...v }));
-  if (payload.length === 0) return { error: "No scores submitted." };
+  const seoScore = toInt(formData.get("seo_score"));
+  if (seoScore != null && (seoScore < 0 || seoScore > 100)) return { error: "SEO score must be 0–100." };
+
+  const record = {
+    site_id: siteId,
+    date,
+    seo_score: seoScore,
+    passed_tests: toInt(formData.get("passed_tests")),
+    warnings: toInt(formData.get("warnings")),
+    failed_tests: toInt(formData.get("failed_tests")),
+  };
 
   const supabase = await createServerSupabaseClient();
-  const { error } = await supabase.from("seo_scores").upsert(payload, { onConflict: "site_id,date" });
+  const { data, error } = await supabase
+    .from("seo_scores")
+    .upsert(record, { onConflict: "site_id,date" })
+    .select("id")
+    .single();
   if (error) return { error: error.message };
+
+  const shot = formData.get("screenshot");
+  if (shot instanceof File && shot.size > 0) {
+    const ext = shot.type === "image/jpeg" ? "jpg" : "png";
+    try {
+      const path = await uploadScreenshot(`seo/${data.id}.${ext}`, shot);
+      await supabase.from("seo_scores").update({ screenshot_path: path }).eq("id", data.id);
+    } catch (e) {
+      return { error: e instanceof Error ? e.message : "Image upload failed." };
+    }
+  }
   revalidatePath("/seo");
   return { error: undefined };
 }

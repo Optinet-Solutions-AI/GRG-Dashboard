@@ -3,6 +3,7 @@ export type Strategy = "mobile" | "desktop";
 export interface PageSpeedResult {
   strategy: Strategy;
   score: number | null; // 0–100, or null if unavailable
+  screenshot: string | null; // PSI page screenshot as a data: URI, or null
 }
 
 /** Base marker for any data-source adapter (manual sections need no adapter). */

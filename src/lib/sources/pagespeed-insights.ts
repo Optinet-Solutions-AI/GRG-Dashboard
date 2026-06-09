@@ -1,6 +1,6 @@
 import "server-only";
 import type { PageSpeedSource, PageSpeedResult, Strategy } from "./types";
-import { parsePsiScore } from "./parse-psi";
+import { parsePsiScore, parsePsiScreenshot } from "./parse-psi";
 
 const ENDPOINT = "https://www.googleapis.com/pagespeedonline/v5/runPagespeed";
 
@@ -10,10 +10,11 @@ async function fetchStrategy(url: string, strategy: Strategy): Promise<PageSpeed
   if (key) params.set("key", key);
   try {
     const res = await fetch(`${ENDPOINT}?${params.toString()}`, { cache: "no-store" });
-    if (!res.ok) return { strategy, score: null };
-    return { strategy, score: parsePsiScore(await res.json()) };
+    if (!res.ok) return { strategy, score: null, screenshot: null };
+    const json = await res.json();
+    return { strategy, score: parsePsiScore(json), screenshot: parsePsiScreenshot(json) };
   } catch {
-    return { strategy, score: null };
+    return { strategy, score: null, screenshot: null };
   }
 }
 

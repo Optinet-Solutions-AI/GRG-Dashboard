@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parsePsiScore } from "./parse-psi";
+import { parsePsiScore, parsePsiScreenshot } from "./parse-psi";
 
 describe("parsePsiScore", () => {
   it("converts a 0..1 performance score to 0..100", () => {
@@ -18,5 +18,17 @@ describe("parsePsiScore", () => {
   });
   it("returns null when the score is not a number", () => {
     expect(parsePsiScore({ lighthouseResult: { categories: { performance: { score: "x" } } } })).toBeNull();
+  });
+});
+
+describe("parsePsiScreenshot", () => {
+  it("returns the final-screenshot data URI", () => {
+    const json = { lighthouseResult: { audits: { "final-screenshot": { details: { data: "data:image/jpeg;base64,/9j/abc" } } } } };
+    expect(parsePsiScreenshot(json)).toBe("data:image/jpeg;base64,/9j/abc");
+  });
+  it("returns null when absent or not a data URI", () => {
+    expect(parsePsiScreenshot({})).toBeNull();
+    expect(parsePsiScreenshot({ lighthouseResult: { audits: {} } })).toBeNull();
+    expect(parsePsiScreenshot({ lighthouseResult: { audits: { "final-screenshot": { details: { data: 123 } } } } })).toBeNull();
   });
 });
