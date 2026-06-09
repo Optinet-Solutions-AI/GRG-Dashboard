@@ -1,7 +1,7 @@
 "use server";
 
 import { getInsightProvider } from "@/lib/assistant/provider";
-import { matchQuestion } from "@/lib/assistant/match";
+import { smartAnswer } from "@/lib/assistant/smart";
 import type { QuestionId } from "@/lib/assistant/types";
 
 const VALID: QuestionId[] = ["ranking-changes", "focus-keywords", "top-mover-week", "missing-or-stale", "pagespeed-trend", "backlinks-summary", "seo-summary", "health-summary"];
@@ -11,20 +11,21 @@ export async function askAssistant(
   formData: FormData,
 ): Promise<{ answer?: string; error?: string }> {
   // Read-only insights over already-public data — usable by anonymous viewers too.
-  // Accepts either a chip (questionId) or free text (q), matched tokenlessly to a known answer.
+  // Tokenless (no LLM): every answer is COMPUTED from the database, so it can't
+  // hallucinate. Free text goes through the smart NLU engine; a preset chip
+  // (questionId), if ever used, routes to the deterministic rule provider.
   const raw = String(formData.get("questionId") ?? "");
   const q = String(formData.get("q") ?? "").trim();
-  let questionId: QuestionId | null = VALID.includes(raw as QuestionId) ? (raw as QuestionId) : null;
-  if (!questionId && q) questionId = matchQuestion(q);
-  if (!questionId) {
-    return {
-      answer:
-        "I can answer questions about your data — for example: “what changed in the rankings?”, “which keywords should I focus on?”, “how many backlinks do we have?”, “what's my SEO score?”, “how is PageSpeed trending?”, “show domain rating and organic traffic”, or “what data is stale?”. Try rephrasing your question around one of those.",
-    };
-  }
   const siteId = String(formData.get("siteId") ?? "") || null;
+
   try {
-    return { answer: await getInsightProvider().answer(questionId, { siteId }) };
+    if (VALID.includes(raw as QuestionId)) {
+      return { answer: await getInsightProvider().answer(raw as QuestionId, { siteId }) };
+    }
+    if (q) {
+      return { answer: await smartAnswer(q, siteId) };
+    }
+    return { answer: "Ask me anything about your rankings, backlinks, PageSpeed, SEO, site health, QA pages, or data freshness." };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Could not answer that." };
   }
