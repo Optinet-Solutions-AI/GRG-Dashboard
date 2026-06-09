@@ -6,22 +6,48 @@ import { askAssistant } from "@/app/(app)/assistant/actions";
 type Msg = { role: "user" | "bot"; text: string };
 
 const GREETING =
-  "Hi! Ask me anything about your data — e.g. “what changed in the rankings?”, “which keywords should I focus on?”, “how many backlinks do we have?”, or “what's my SEO score?”";
+  "Hi! Ask me anything about your data — type or tap the mic and talk. e.g. “what changed in the rankings?”, “which keywords should I focus on?”, “how many backlinks do we have?”";
+
+// Minimal typing for the browser SpeechRecognition API (not in the standard DOM lib).
+interface SpeechRecognitionLike {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  start(): void;
+  stop(): void;
+  onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
+  onend: (() => void) | null;
+  onerror: (() => void) | null;
+}
+type SRConstructor = new () => SpeechRecognitionLike;
 
 export function AssistantWidget() {
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Msg[]>([{ role: "bot", text: GREETING }]);
+  const [listening, setListening] = useState(false);
+  const [voiceSupported, setVoiceSupported] = useState(false);
+  const [speakOn, setSpeakOn] = useState(false);
+
   const threadRef = useRef<HTMLDivElement>(null);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const submitRef = useRef<(text: string) => void>(() => {});
+  const speakOnRef = useRef(speakOn);
+  speakOnRef.current = speakOn;
 
   useEffect(() => {
     threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, pending, open]);
 
-  async function send(e: React.FormEvent) {
-    e.preventDefault();
-    const q = input.trim();
+  function speak(text: string) {
+    if (!speakOnRef.current || typeof window === "undefined" || !window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+  }
+
+  async function submitText(raw: string) {
+    const q = raw.trim();
     if (!q || pending) return;
     setInput("");
     setMessages((m) => [...m, { role: "user", text: q }]);
@@ -30,12 +56,63 @@ export function AssistantWidget() {
       const fd = new FormData();
       fd.set("q", q);
       const res = await askAssistant(undefined, fd);
-      setMessages((m) => [...m, { role: "bot", text: res.error ?? res.answer ?? "Sorry, I couldn't answer that." }]);
+      const answer = res.error ?? res.answer ?? "Sorry, I couldn't answer that.";
+      setMessages((m) => [...m, { role: "bot", text: answer }]);
+      speak(answer);
     } catch {
       setMessages((m) => [...m, { role: "bot", text: "Something went wrong. Please try again." }]);
     } finally {
       setPending(false);
     }
+  }
+  submitRef.current = submitText;
+
+  // Set up speech recognition once, client-side.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const SR: SRConstructor | undefined =
+      (window as unknown as { SpeechRecognition?: SRConstructor }).SpeechRecognition ??
+      (window as unknown as { webkitSpeechRecognition?: SRConstructor }).webkitSpeechRecognition;
+    if (!SR) return;
+    setVoiceSupported(true);
+    const rec = new SR();
+    rec.lang = "en-US";
+    rec.continuous = false;
+    rec.interimResults = false;
+    rec.onresult = (e) => {
+      let transcript = "";
+      for (let i = 0; i < e.results.length; i++) transcript += e.results[i][0].transcript;
+      transcript = transcript.trim();
+      if (transcript) {
+        setInput(transcript);
+        submitRef.current(transcript);
+      }
+    };
+    rec.onend = () => setListening(false);
+    rec.onerror = () => setListening(false);
+    recognitionRef.current = rec;
+  }, []);
+
+  function toggleMic() {
+    const rec = recognitionRef.current;
+    if (!rec) return;
+    if (listening) {
+      rec.stop();
+      setListening(false);
+      return;
+    }
+    try {
+      setInput("");
+      rec.start();
+      setListening(true);
+    } catch {
+      setListening(false);
+    }
+  }
+
+  function send(e: React.FormEvent) {
+    e.preventDefault();
+    submitText(input);
   }
 
   return (
@@ -56,8 +133,17 @@ export function AssistantWidget() {
             <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/20 text-lg">🤖</div>
             <div className="leading-tight">
               <div className="text-sm font-semibold">Assistant</div>
-              <div className="text-[11px] text-blue-100">Always active · instant answers</div>
+              <div className="text-[11px] text-blue-100">{listening ? "Listening…" : "Always active · instant answers"}</div>
             </div>
+            <button
+              type="button"
+              onClick={() => { setSpeakOn((s) => !s); if (typeof window !== "undefined") window.speechSynthesis?.cancel(); }}
+              aria-label={speakOn ? "Turn off spoken answers" : "Read answers aloud"}
+              title={speakOn ? "Spoken answers: on" : "Spoken answers: off"}
+              className="ml-auto flex h-8 w-8 items-center justify-center rounded-full hover:bg-white/15"
+            >
+              {speakOn ? "🔊" : "🔇"}
+            </button>
           </div>
 
           {/* Thread */}
@@ -85,10 +171,24 @@ export function AssistantWidget() {
 
           {/* Composer */}
           <form onSubmit={send} className="flex items-center gap-2 border-t border-slate-100 bg-white p-2.5">
+            {voiceSupported && (
+              <button
+                type="button"
+                onClick={toggleMic}
+                aria-label={listening ? "Stop listening" : "Speak your question"}
+                title={listening ? "Stop" : "Speak"}
+                className={[
+                  "flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition",
+                  listening ? "animate-pulse bg-red-500 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200",
+                ].join(" ")}
+              >
+                🎤
+              </button>
+            )}
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Aa"
+              placeholder={listening ? "Listening…" : "Aa"}
               aria-label="Type a message"
               className="min-w-0 flex-1 rounded-full bg-slate-100 px-4 py-2 text-sm outline-none focus:bg-slate-200/70"
             />
