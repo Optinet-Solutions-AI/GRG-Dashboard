@@ -1,5 +1,5 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { getRankingWeeks, getRankingGrid } from "@/lib/data/ranking";
+import { getRankingGridByWeek } from "@/lib/data/ranking";
 import { RankingGrid } from "@/components/ranking/RankingGrid";
 import { getCurrentRole, isAdminRole } from "@/lib/auth";
 import { addRankingWeek } from "./actions";
@@ -15,8 +15,9 @@ export default async function RankingPage({ searchParams }: { searchParams: Prom
   const selected = siteList.find((s) => s.id === site) ?? siteList[0];
   if (!selected) return <p className="text-sm text-slate-500">No sites configured yet.</p>;
 
-  const weeks = (await getRankingWeeks()).slice(0, 26); // newest first, capped to ~6 months
-  const grids = await Promise.all(weeks.map((w) => getRankingGrid(selected.id, w)));
+  // Single round-trip for the most recent ~6 months of weeks (was one RPC per week).
+  const weekly = await getRankingGridByWeek(selected.id, 26); // newest first
+  const weeks = weekly.map((w) => w.week);
 
   const isAdmin = isAdminRole(await getCurrentRole());
   let entry = null;
@@ -69,13 +70,13 @@ export default async function RankingPage({ searchParams }: { searchParams: Prom
         <p className="text-sm text-slate-500">No ranking data yet{isAdmin ? " — import an Ahrefs export above." : "."}</p>
       ) : (
         <div className="max-h-[72vh] space-y-6 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50/40 p-3">
-          {weeks.map((w, i) => (
-            <section key={w}>
+          {weekly.map(({ week, rows }, i) => (
+            <section key={week}>
               <div className="sticky top-0 -mx-3 mb-2 flex items-center gap-2 bg-slate-50/95 px-3 py-1 backdrop-blur">
-                <h2 className="text-sm font-semibold text-slate-800">Week of {w}</h2>
+                <h2 className="text-sm font-semibold text-slate-800">Week of {week}</h2>
                 {i === 0 ? <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">Latest</span> : null}
               </div>
-              <RankingGrid rows={grids[i]} />
+              <RankingGrid rows={rows} />
             </section>
           ))}
         </div>
