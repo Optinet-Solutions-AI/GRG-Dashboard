@@ -29,21 +29,44 @@ export function AssistantWidget() {
   const [listening, setListening] = useState(false);
   const [voiceSupported, setVoiceSupported] = useState(false);
   const [speakOn, setSpeakOn] = useState(false);
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [voiceURI, setVoiceURI] = useState("");
 
   const threadRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const submitRef = useRef<(text: string) => void>(() => {});
   const speakOnRef = useRef(speakOn);
   speakOnRef.current = speakOn;
+  const voiceURIRef = useRef(voiceURI);
+  voiceURIRef.current = voiceURI;
+
+  // Load the browser's available voices (English) so the user can pick one.
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.speechSynthesis) return;
+    const load = () => {
+      const en = window.speechSynthesis.getVoices().filter((v) => v.lang.toLowerCase().startsWith("en"));
+      setVoices(en);
+      setVoiceURI((cur) => cur || en.find((v) => /Google|Natural|Microsoft/i.test(v.name))?.voiceURI || en[0]?.voiceURI || "");
+    };
+    load();
+    window.speechSynthesis.onvoiceschanged = load;
+    return () => { if (window.speechSynthesis) window.speechSynthesis.onvoiceschanged = null; };
+  }, []);
 
   useEffect(() => {
     threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, pending, open]);
 
-  function speak(text: string) {
-    if (!speakOnRef.current || typeof window === "undefined" || !window.speechSynthesis) return;
+  function say(text: string) {
+    if (typeof window === "undefined" || !window.speechSynthesis) return;
     window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+    const u = new SpeechSynthesisUtterance(text);
+    const v = window.speechSynthesis.getVoices().find((x) => x.voiceURI === voiceURIRef.current);
+    if (v) u.voice = v;
+    window.speechSynthesis.speak(u);
+  }
+  function speak(text: string) {
+    if (speakOnRef.current) say(text);
   }
 
   async function submitText(raw: string) {
@@ -145,6 +168,26 @@ export function AssistantWidget() {
               {speakOn ? "🔊" : "🔇"}
             </button>
           </div>
+
+          {/* Voice picker (only when spoken answers are on) */}
+          {speakOn && voices.length > 0 && (
+            <div className="flex items-center gap-2 border-b border-slate-100 bg-slate-50 px-3 py-1.5 text-xs">
+              <span className="shrink-0 text-slate-500">Voice</span>
+              <select
+                value={voiceURI}
+                onChange={(e) => setVoiceURI(e.target.value)}
+                aria-label="Choose voice"
+                className="min-w-0 flex-1 rounded border border-slate-200 bg-white px-1.5 py-1 text-xs"
+              >
+                {voices.map((v) => (
+                  <option key={v.voiceURI} value={v.voiceURI}>{v.name}</option>
+                ))}
+              </select>
+              <button type="button" onClick={() => say("Hi, this is how I sound.")} className="shrink-0 rounded bg-slate-200 px-2 py-1 font-medium text-slate-700 hover:bg-slate-300">
+                Test
+              </button>
+            </div>
+          )}
 
           {/* Thread */}
           <div ref={threadRef} className="flex-1 space-y-2 overflow-y-auto bg-slate-50 px-3 py-3">

@@ -31,12 +31,14 @@ const COUNTRY_SYNONYMS: Record<string, string> = {
 const TOPIC_KEYWORDS: { topic: Topic; words: string[] }[] = [
   { topic: "freshness", words: ["stale", "fresh", "outdated", "out of date", "up to date", "last updated", "missing data", "not updated", "needs update", "how old", "data old"] },
   { topic: "focus", words: ["focus", "prioriti", "work on", "what to work", "where to improve", "should i improve", "what should i", "needs work", "weakest", "low hanging", "quick win", "opportunit"] },
-  { topic: "pagespeed", words: ["pagespeed", "page speed", "speed", "lighthouse", "load time", "loading", "core web", "performance score", "psi"] },
-  { topic: "backlinks", words: ["backlink", "back link", "link building", "links built", "referring domain", "anchor", "link profile", "off-page", "off page", "links"] },
+  // pagespeed: includes mobile/desktop (the only metric split that way) and common
+  // speech-to-text / typo variants of "page speed" (page feed, pagefeed, page-speed).
+  { topic: "pagespeed", words: ["pagespeed", "page speed", "page-speed", "page feed", "pagefeed", "site speed", "speed", "lighthouse", "load time", "loading", "core web", "web vital", "performance score", "psi", "mobile", "desktop"] },
+  { topic: "backlinks", words: ["backlink", "back link", "link building", "links built", "referring domain", "anchor", "link profile", "off-page", "off page", "linking", "links"] },
   { topic: "seo", words: ["seo score", "on-page", "onpage", "on page", "rankmath", "seo audit", "seo health", "my seo", "seo status", "technical seo", "seo result"] },
   { topic: "health", words: ["health", "domain rating", "domain authority", "organic traffic", "organic keyword", "traffic", "ahrefs", "visibility", " dr ", "authority"] },
   { topic: "qa", words: [" qa ", "checklist", "quality assurance", "qa page", "pages crawled", "page check", "brand protection"] },
-  { topic: "ranking", words: ["rank", "ranking", "position", "serp", "keyword", "top 10", "top ten", "top 3", "top three", "top 100", "page one", "page 1", "google position", "week", "changed", "moved", "movement"] },
+  { topic: "ranking", words: ["rank", "ranking", "position", "serp", "keyword", "top 10", "top ten", "top 3", "top three", "top 100", "page one", "page 1", "google", "search result", "week", "changed", "moved", "movement"] },
 ];
 
 function has(t: string, ...needles: string[]): boolean {
@@ -99,6 +101,8 @@ export function parseQuery(text: string, vocab: { countryCodes: string[]; keywor
   const count = has(t, "how many", "number of", " count", "how much", "total number");
   const greeting = has(t, " hi ", " hello ", " hey ", "thank", "good morning", "good afternoon", "good evening", "what can you do", "help me", " who are you");
 
+  // A bare "compare … mobile/desktop" with no topic is a PageSpeed question.
+  if (orderedTopics.length === 0 && comparison) orderedTopics.push("pagespeed");
   // A bare country / keyword / direction / extreme with no explicit topic almost
   // always refers to keyword rankings in this product.
   if (orderedTopics.length === 0 && (country || keyword || direction || extreme)) {

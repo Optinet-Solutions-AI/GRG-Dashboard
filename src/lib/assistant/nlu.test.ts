@@ -31,6 +31,13 @@ describe("parseQuery (tokenless NLU)", () => {
     expect(q.comparison).toBe(true);
   });
 
+  it("understands typo/ASR 'page feed' and mobile/desktop as pagespeed", () => {
+    const q = p("what are the status of the page feed on mobile and desktop");
+    expect(q.topics).toContain("pagespeed");
+    expect(q.comparison).toBe(true);
+    expect(p("how is the site speed on mobile?").topics).toContain("pagespeed");
+  });
+
   it("detects counts on backlinks", () => {
     const q = p("how many backlinks are indexed?");
     expect(q.topics).toContain("backlinks");
