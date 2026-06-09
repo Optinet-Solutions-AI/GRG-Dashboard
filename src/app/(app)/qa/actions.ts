@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { crawlSitemapPages } from "@/lib/qa/sitemap";
 
 export async function saveQaChecks(siteId: string, _prev: { error?: string } | undefined, formData: FormData) {
   await requireAdmin();
@@ -30,4 +31,35 @@ export async function saveQaChecks(siteId: string, _prev: { error?: string } | u
   if (error) return { error: error.message };
   revalidatePath("/qa");
   return { error: undefined };
+}
+
+export async function refreshQaPages(
+  siteId: string,
+  _prev: { ok?: boolean; message?: string; error?: string } | undefined,
+  _formData: FormData,
+): Promise<{ ok?: boolean; message?: string; error?: string }> {
+  await requireAdmin();
+  if (!siteId) return { error: "Missing site." };
+  const supabase = await createServerSupabaseClient();
+  const site = (await supabase.from("sites").select("domain").eq("id", siteId).single()).data as { domain: string } | null;
+  if (!site) return { error: "Site not found." };
+  const base = /^https?:\/\//.test(site.domain) ? site.domain : `https://${site.domain}`;
+
+  let pages: string[];
+  try {
+    pages = await crawlSitemapPages(base);
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Sitemap crawl failed." };
+  }
+  if (!pages.length) return { error: "No pages found in the sitemap." };
+
+  const payload = pages.map((url, i) => {
+    let label = url;
+    try { label = decodeURIComponent(new URL(url).pathname) || "/"; } catch { /* keep url */ }
+    return { site_id: siteId, url, label, sort_order: i + 1, active: true };
+  });
+  const { error } = await supabase.from("qa_pages").upsert(payload, { onConflict: "site_id,url" });
+  if (error) return { error: error.message };
+  revalidatePath("/qa");
+  return { ok: true, message: `Synced ${pages.length} pages from the sitemap.` };
 }
