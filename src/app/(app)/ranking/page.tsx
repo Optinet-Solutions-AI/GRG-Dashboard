@@ -5,7 +5,6 @@ import { getCurrentRole, isAdminRole } from "@/lib/auth";
 import { addRankingWeek } from "./actions";
 import { AddRankingWeek } from "@/components/entry/AddRankingWeek";
 import { ImportRankings } from "@/components/ranking/ImportRankings";
-import { AssistantPanel } from "@/components/assistant/AssistantPanel";
 
 export default async function RankingPage({ searchParams }: { searchParams: Promise<{ site?: string }> }) {
   const { site } = await searchParams;
@@ -52,8 +51,6 @@ export default async function RankingPage({ searchParams }: { searchParams: Prom
         <span className="font-semibold text-green-600">↑</span> improved · <span className="font-semibold text-red-600">↓</span> dropped vs previous week · (n) = previous position · grey = not in top 100.
         {!site ? " Showing the first site — use the selector in the top bar to change site." : ""}
       </p>
-
-      <AssistantPanel siteId={selected.id} />
 
       {isAdmin ? (
         <details className="rounded-xl border border-slate-200 bg-white p-4" open={weeks.length === 0}>

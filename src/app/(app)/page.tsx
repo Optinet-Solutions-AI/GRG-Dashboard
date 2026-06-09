@@ -1,7 +1,6 @@
 import { getOverview, getTop10Trend } from "@/lib/data/overview";
 import { StatCard } from "@/components/StatCard";
 import { TrendChart } from "@/components/charts/TrendChart";
-import { AssistantPanel } from "@/components/assistant/AssistantPanel";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export default async function OverviewPage({ searchParams }: { searchParams: Promise<{ site?: string }> }) {
@@ -11,10 +10,19 @@ export default async function OverviewPage({ searchParams }: { searchParams: Pro
   const [overview, trend] = await Promise.all([getOverview(siteId), getTop10Trend(siteId)]);
 
   const supabase = await createServerSupabaseClient();
-  const { data: siteRows } = await supabase
+  let sq = supabase
     .from("seo_scores")
-    .select("rankmath_analyzer, seo_homepage, health_score, sites(display_name)")
+    .select("seo_score, passed_tests, warnings, failed_tests, date, site_id, sites(display_name)")
     .order("date", { ascending: false });
+  if (siteId) sq = sq.eq("site_id", siteId);
+  const { data: seoRows } = await sq;
+  // latest entry per site
+  const seen = new Set<string>();
+  const latestSeo = ((seoRows ?? []) as Array<Record<string, unknown> & { site_id: string }>).filter((r) => {
+    if (seen.has(r.site_id)) return false;
+    seen.add(r.site_id);
+    return true;
+  });
 
   return (
     <div className="space-y-5">
@@ -24,8 +32,6 @@ export default async function OverviewPage({ searchParams }: { searchParams: Pro
           {overview?.latest_week ? `Latest ranking week: ${overview.latest_week}` : ""}
         </span>
       </div>
-
-      <AssistantPanel siteId={siteId} />
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <StatCard label="Avg SEO Score" value={overview?.avg_seo != null ? String(overview.avg_seo) : "—"} />
@@ -40,25 +46,33 @@ export default async function OverviewPage({ searchParams }: { searchParams: Pro
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white p-4">
-        <div className="mb-3 font-semibold text-slate-900">SEO scores by site (latest)</div>
+        <div className="mb-3 font-semibold text-slate-900">SEO score by site (latest)</div>
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-slate-500">
-              <th className="py-1">Site</th><th className="py-1">Rankmath</th><th className="py-1">Homepage</th><th className="py-1">Health</th>
+              <th className="py-1">Site</th>
+              <th className="py-1">SEO Score</th>
+              <th className="py-1">Passed</th>
+              <th className="py-1">Warnings</th>
+              <th className="py-1">Failed</th>
             </tr>
           </thead>
           <tbody>
-            {(siteRows ?? []).map((r: Record<string, unknown>, i: number) => {
-              const site = r.sites as { display_name?: string } | null;
+            {latestSeo.map((r, i) => {
+              const s = r.sites as { display_name?: string } | null;
               return (
                 <tr key={i} className="border-t border-slate-100">
-                  <td className="py-1.5">{site?.display_name ?? "—"}</td>
-                  <td className="py-1.5">{String(r.rankmath_analyzer ?? "—")}</td>
-                  <td className="py-1.5">{String(r.seo_homepage ?? "—")}</td>
-                  <td className="py-1.5">{String(r.health_score ?? "—")}</td>
+                  <td className="py-1.5">{s?.display_name ?? "—"}</td>
+                  <td className="py-1.5 font-medium text-slate-800">{String(r.seo_score ?? "—")}</td>
+                  <td className="py-1.5 text-green-700">{String(r.passed_tests ?? "—")}</td>
+                  <td className="py-1.5 text-amber-700">{String(r.warnings ?? "—")}</td>
+                  <td className="py-1.5 text-red-700">{String(r.failed_tests ?? "—")}</td>
                 </tr>
               );
             })}
+            {latestSeo.length === 0 ? (
+              <tr><td colSpan={5} className="py-2 text-slate-500">No SEO data yet.</td></tr>
+            ) : null}
           </tbody>
         </table>
       </div>
