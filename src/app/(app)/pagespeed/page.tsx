@@ -29,8 +29,8 @@ function Gauge({ label, score }: { label: string; score: number | null }) {
 }
 
 function DeviceReport({
-  label, perf, a11y, bp, seo, shot,
-}: { label: string; perf: number | null; a11y: number | null; bp: number | null; seo: number | null; shot?: string }) {
+  label, perf, a11y, bp, seo,
+}: { label: string; perf: number | null; a11y: number | null; bp: number | null; seo: number | null }) {
   return (
     <div>
       <div className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">{label} report</div>
@@ -40,11 +40,18 @@ function DeviceReport({
         <Gauge label="Best Practices" score={bp} />
         <Gauge label="SEO" score={seo} />
       </div>
-      {shot ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={shot} alt={`${label} PageSpeed report`} className="mt-3 w-full max-w-md rounded-lg border border-slate-200 shadow-sm" />
-      ) : null}
     </div>
+  );
+}
+
+function ReportShot({ label, src }: { label: string; src?: string }) {
+  if (!src) return null;
+  return (
+    <figure className="overflow-hidden rounded-xl border border-slate-200 shadow-sm">
+      <figcaption className="bg-slate-50 px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">{label} — PageSpeed Insights report</figcaption>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={src} alt={`${label} PageSpeed Insights report`} className="w-full" />
+    </figure>
   );
 }
 
@@ -110,11 +117,15 @@ export default async function PageSpeedPage({ searchParams }: { searchParams: Pr
             <span className="text-xs text-slate-500">{r.date}</span>
           </div>
           <div className="grid gap-6 md:grid-cols-2">
-            <DeviceReport label="Mobile" perf={r.mobile_score} a11y={r.mobile_accessibility} bp={r.mobile_best_practices} seo={r.mobile_seo}
-              shot={r.mobile_screenshot_path ? signed.get(r.mobile_screenshot_path) : undefined} />
-            <DeviceReport label="Desktop" perf={r.desktop_score} a11y={r.desktop_accessibility} bp={r.desktop_best_practices} seo={r.desktop_seo}
-              shot={r.desktop_screenshot_path ? signed.get(r.desktop_screenshot_path) : undefined} />
+            <DeviceReport label="Mobile" perf={r.mobile_score} a11y={r.mobile_accessibility} bp={r.mobile_best_practices} seo={r.mobile_seo} />
+            <DeviceReport label="Desktop" perf={r.desktop_score} a11y={r.desktop_accessibility} bp={r.desktop_best_practices} seo={r.desktop_seo} />
           </div>
+          {(r.mobile_screenshot_path || r.desktop_screenshot_path) ? (
+            <div className="mt-4 space-y-4">
+              <ReportShot label="Mobile" src={r.mobile_screenshot_path ? signed.get(r.mobile_screenshot_path) : undefined} />
+              <ReportShot label="Desktop" src={r.desktop_screenshot_path ? signed.get(r.desktop_screenshot_path) : undefined} />
+            </div>
+          ) : null}
         </div>
       ))}
       {rows.length === 0 ? <p className="text-sm text-slate-500">No PageSpeed data.</p> : null}
