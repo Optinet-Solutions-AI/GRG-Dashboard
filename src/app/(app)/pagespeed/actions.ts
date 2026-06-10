@@ -45,7 +45,7 @@ export async function addPagespeedPeriod(_prev: { error?: string } | undefined, 
       if (mShot instanceof File && mShot.size > 0) patch.mobile_screenshot_path = await uploadScreenshot(`pagespeed/${host}/${date}-mobile.png`, mShot);
       if (dShot instanceof File && dShot.size > 0) patch.desktop_screenshot_path = await uploadScreenshot(`pagespeed/${host}/${date}-desktop.png`, dShot);
 
-      const { error } = await supabase.from("pagespeed_entries").upsert(patch, { onConflict: "pagespeed_url_id,date" });
+      const { error } = await supabase.from("pagespeed_entries").insert(patch);
       if (error) return { error: error.message };
     }
   } catch (e) {

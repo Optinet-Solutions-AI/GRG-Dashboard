@@ -51,7 +51,7 @@ export async function autofillPagespeed(
   // Scores only here. The proof screenshot (the real PageSpeed Insights report page)
   // is captured by scripts/capture-psi-report.mjs, which needs a real browser.
 
-  const { error: e2 } = await supabase.from("pagespeed_entries").upsert(record, { onConflict: "pagespeed_url_id,date" });
+  const { error: e2 } = await supabase.from("pagespeed_entries").insert(record);
   if (e2) return { error: e2.message };
   revalidatePath("/pagespeed");
   return { ok: true };

@@ -71,7 +71,7 @@ export default async function PageSpeedPage({ searchParams }: { searchParams: Pr
   let q = supabase
     .from("pagespeed_entries")
     .select("id, date, mobile_score, mobile_accessibility, mobile_best_practices, mobile_seo, desktop_score, desktop_accessibility, desktop_best_practices, desktop_seo, mobile_screenshot_path, desktop_screenshot_path, pagespeed_urls!inner(url, site_id, sites!inner(display_name))")
-    .order("date", { ascending: false });
+    .order("created_at", { ascending: false });
   if (site) q = q.eq("pagespeed_urls.site_id", site);
   const { data } = await q;
   const rows = (data ?? []) as unknown as Row[];

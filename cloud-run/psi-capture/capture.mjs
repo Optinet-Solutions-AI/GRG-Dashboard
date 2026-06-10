@@ -87,8 +87,9 @@ async function main() {
         console.log(`  ${strategy} upload failed:`, e.message);
       }
     }
-    const { error: upErr } = await db.from("pagespeed_entries").upsert(patch, { onConflict: "pagespeed_url_id,date" });
-    if (upErr) console.log("DB update failed:", upErr.message);
+    // Insert a NEW record each run (multiple per day allowed) — full history, ordered by created_at.
+    const { error: upErr } = await db.from("pagespeed_entries").insert(patch);
+    if (upErr) console.log("DB insert failed:", upErr.message);
     else done++;
   }
 

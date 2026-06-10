@@ -81,8 +81,8 @@ async function main() {
       }
     }
     // Attach screenshots to today's entry (created by the score cron); leaves scores untouched.
-    const { error: upErr } = await db.from("pagespeed_entries").upsert(patch, { onConflict: "pagespeed_url_id,date" });
-    if (upErr) console.log("DB update failed:", upErr.message);
+    const { error: upErr } = await db.from("pagespeed_entries").insert(patch);
+    if (upErr) console.log("DB insert failed:", upErr.message);
     else done++;
   }
 
