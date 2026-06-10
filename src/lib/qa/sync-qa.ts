@@ -6,6 +6,9 @@ const SHEET_ID = "1_DPHN4k7ZWT1indxQXiFdSyanuWz2SLgCC4vx_e2PyU";
 const PAGE_GID = "792540578";
 const SITE_GID = "0";
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyDB = { from(table: string): any };
+
 async function fetchCsv(gid: string): Promise<string> {
   const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${gid}`;
   const res = await fetch(url, { cache: "no-store", redirect: "follow" });
@@ -13,8 +16,8 @@ async function fetchCsv(gid: string): Promise<string> {
   return res.text();
 }
 
-export async function syncQaFromSheet(siteId: string): Promise<{ pages: number; siteRows: number }> {
-  const db = createClient(
+export async function syncQaFromSheet(siteId: string, client?: AnyDB): Promise<{ pages: number; siteRows: number }> {
+  const db: AnyDB = client ?? createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
     { auth: { persistSession: false } },

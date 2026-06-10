@@ -75,7 +75,8 @@ export async function syncQaSheet(
   await requireAdmin();
   if (!siteId) return { error: "Missing site." };
   try {
-    const r = await syncQaFromSheet(siteId);
+    const supabase = await createServerSupabaseClient();
+    const r = await syncQaFromSheet(siteId, supabase);
     revalidatePath("/qa");
     return { ok: true, message: `Synced ${r.pages} page rows and ${r.siteRows} site row(s) from the sheet.` };
   } catch (e) {
