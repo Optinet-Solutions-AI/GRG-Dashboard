@@ -47,7 +47,7 @@ const TOPIC_KEYWORDS: { topic: Topic; words: string[] }[] = [
   { topic: "backlinks", words: ["backlink", "back link", "link building", "links built", "referring domain", "anchor", "link profile", "off-page", "off page", "linking", "link"] },
   { topic: "seo", words: ["seo score", "on-page", "onpage", "on page", "rankmath", "seo audit", "seo health", "my seo", "seo status", "technical seo", "seo result"] },
   { topic: "health", words: ["health", "domain rating", "domain authority", "organic traffic", "organic keyword", "traffic", "ahrefs", "visibility", " dr ", "authority"] },
-  { topic: "qa", words: [" qa ", "quality assurance", "qa page", "pages crawled", "page check", "brand protection", "indexed", "index status", "pages indexed", "not indexed", "canonical", "html lang", "meta description", "h1", "audit page", "page audit", "seo issue", "ar issue", "alt tag", "missing alt", "page"] },
+  { topic: "qa", words: [" qa ", "quality assurance", "qa page", "pages crawled", "page check", "brand protection", "indexed", "index status", "pages indexed", "not indexed", "canonical", "html lang", "meta description", "h1", "audit page", "page audit", "seo issue", "ar issue", "alt tag", "missing alt"] },
   { topic: "ranking", words: ["rank", "ranking", "position", "serp", "keyword", "top 10", "top ten", "top 3", "top three", "top 100", "page one", "page 1", "google", "search result", "week", "changed", "moved", "movement"] },
 ];
 
@@ -81,19 +81,23 @@ function detectKeyword(t: string, keywords: string[]): string | null {
 // (exact phrase, as before); single-word triggers match a stemmed token exactly
 // or via fuzzy distance. Entities (countries/keywords) are matched EXACTLY
 // elsewhere — never fuzzed — so a number is never attached to a wrong entity.
-function triggerHit(word: string, t: string, stems: string[]): boolean {
+function triggerHit(word: string, t: string, tokens: string[]): boolean {
   if (word.includes(" ") || word.includes("-")) return t.includes(word);
-  const w = stem(word.trim());
-  return stems.some((tok) => tok === w || fuzzyEq(tok, w));
+  const w = word.trim();
+  const ws = stem(w);
+  // stem-equality catches plural/verb variants; fuzzy on the RAW token catches
+  // typos (stemming "ranking"->"rank" would make it too short to fuzzy-match).
+  return tokens.some((tok) => stem(tok) === ws || fuzzyEq(tok, w));
 }
 
 export function parseQuery(text: string, vocab: { countryCodes: string[]; keywords: string[] }): ParsedQuery {
   const t = normalize(text);
-  const stems = tokenize(text).map(stem);
+  const tokens = tokenize(text);
+  const stems = tokens.map(stem);
 
   const topics: Topic[] = [];
   for (const { topic, words } of TOPIC_KEYWORDS) {
-    if (words.some((w) => triggerHit(w, t, stems))) topics.push(topic);
+    if (words.some((w) => triggerHit(w, t, tokens))) topics.push(topic);
   }
   // de-dup while keeping order
   const seen = new Set<Topic>();
@@ -122,10 +126,10 @@ export function parseQuery(text: string, vocab: { countryCodes: string[]; keywor
   const negate = has(t, " not ", " no ", " aren t ", " arent ", " isn t ", " isnt ", "without", "missing", "non ", " un");
 
   let filter: PageFilter | null = null;
-  if (has(t, "arabic", "alignment", " ar ", "rtl") && (stems.includes("issue") || has(t, "alignment"))) filter = "ar-issues";
+  if (has(t, "arabic", "alignment", " ar ", "rtl") && (stems.includes("issue") || stems.includes("problem") || has(t, "alignment", "error", "wrong"))) filter = "ar-issues";
   else if (has(t, "missing alt", "alt text", "alt tag", "no alt", "without alt") || (has(t, "alt") && negate)) filter = "missing-alt";
-  else if (has(t, "broken", "404", "not 200", "non 200", "error page", "not live", "dead page")) filter = "non-200";
-  else if (stems.includes("index") && (has(t, "not index", "no index", "unindex", "not in google", "missing from", "aren t index", "isn t index") || negate)) filter = "not-indexed";
+  else if (has(t, "broken", "404", "not 200", "non 200", "error page", "not live", "dead page") || (has(t, " 200 ") && negate)) filter = "non-200";
+  else if (has(t, "not index", "no index", "unindex", "not in google", "missing from google", "missing from index") || (stems.includes("index") && negate)) filter = "not-indexed";
   else if (has(t, "seo issue", "seo problem", "seo error") || (stems.includes("issue") && (stems.includes("page") || list))) filter = "seo-issues";
 
   let threshold: { kind: "top"; n: number } | null = null;
@@ -142,8 +146,9 @@ export function parseQuery(text: string, vocab: { countryCodes: string[]; keywor
   const greeting = has(t, " hi ", " hello ", " hey ", "thank", "good morning", "good afternoon", "good evening", "what can you do", "help me", " who are you");
 
   // ── topic fallbacks for bare entity/slot questions ──
-  // "how many pages" with no other topic → QA
-  if (orderedTopics.length === 0 && count && stems.includes("page")) orderedTopics.push("qa");
+  // A page-level QA question detected purely via a filter / URL / "which pages…"
+  // (e.g. "any broken pages?", "details for /ar/about") routes to QA.
+  if (orderedTopics.length === 0 && (filter || url || ((count || list) && stems.includes("page")))) orderedTopics.push("qa");
   // A bare "compare … mobile/desktop" with no topic is a PageSpeed question.
   if (orderedTopics.length === 0 && comparison) orderedTopics.push("pagespeed");
   // A bare country / keyword / direction / extreme with no explicit topic almost
