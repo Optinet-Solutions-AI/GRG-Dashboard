@@ -196,8 +196,30 @@ async function healthAnswer(sb: SB, siteId: string): Promise<string> {
 }
 
 async function qaAnswer(sb: SB, siteId: string): Promise<string> {
-  const { count } = await sb.from("qa_pages").select("id", { count: "exact", head: true }).eq("site_id", siteId);
-  return `🧪 QA\n${count ?? 0} pages are crawled and tracked in the brand-protection checklist.`;
+  const { data: pages } = await sb
+    .from("qa_page_audit")
+    .select("indexed_gsc, status, seo_issues, ar_alignment_issues")
+    .eq("site_id", siteId);
+  const rows = (pages ?? []) as Array<{ indexed_gsc: string | null; status: string | null; seo_issues: string | null; ar_alignment_issues: string | null }>;
+
+  if (rows.length === 0) {
+    const { count: oldCount } = await sb.from("qa_pages").select("id", { count: "exact", head: true }).eq("site_id", siteId);
+    return `🧪 QA\n${oldCount ?? 0} pages in the sitemap checklist. Sync the QA Google Sheet for per-page audit data.`;
+  }
+
+  const total = rows.length;
+  const indexed = rows.filter((r) => /done|yes|indexed|true/i.test(r.indexed_gsc ?? "")).length;
+  const notIndexed = total - indexed;
+  const live = rows.filter((r) => r.status === "200").length;
+  const withSeoIssues = rows.filter((r) => r.seo_issues && r.seo_issues.trim() && r.seo_issues.trim() !== "—").length;
+  const withArIssues = rows.filter((r) => r.ar_alignment_issues && r.ar_alignment_issues.trim() && r.ar_alignment_issues.trim() !== "—").length;
+
+  return `🧪 QA Audit · ${total} pages\n${bullets([
+    `Indexed in GSC: ${indexed} / ${total}${notIndexed > 0 ? ` (${notIndexed} not indexed)` : ""}`,
+    `Live (200 status): ${live}`,
+    ...(withSeoIssues > 0 ? [`SEO issues flagged: ${withSeoIssues} pages`] : []),
+    ...(withArIssues > 0 ? [`AR alignment issues: ${withArIssues} pages`] : []),
+  ])}`;
 }
 
 async function maxDate(sb: SB, table: string, col: string): Promise<string | null> {
@@ -222,7 +244,7 @@ async function freshnessAnswer(sb: SB): Promise<string> {
 }
 
 const CAPABILITIES =
-  "I can answer questions about this dashboard's data:\n• Rankings — overall, by country (Saudi/UAE/Kuwait/Qatar/Bahrain/Oman), what improved/dropped, best/worst keywords\n• What to focus on\n• Backlinks\n• PageSpeed (incl. mobile vs desktop)\n• SEO score, site health, QA pages, and which data is stale\nAsk in plain English.";
+  "I can answer questions about this dashboard's data:\n• Rankings — overall, by country (Saudi/UAE/Kuwait/Qatar/Bahrain/Oman), what improved/dropped, best/worst keywords\n• What to focus on\n• Backlinks\n• PageSpeed (mobile vs desktop)\n• SEO score & site health\n• QA — how many pages are indexed, live, have SEO/AR issues\n• Data freshness\nAsk in plain English.";
 
 /** Tokenless smart answer: parse the question, then compute the answer from live data. */
 export async function smartAnswer(question: string, siteId?: string | null): Promise<string> {

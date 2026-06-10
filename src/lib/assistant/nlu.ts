@@ -37,7 +37,7 @@ const TOPIC_KEYWORDS: { topic: Topic; words: string[] }[] = [
   { topic: "backlinks", words: ["backlink", "back link", "link building", "links built", "referring domain", "anchor", "link profile", "off-page", "off page", "linking", "links"] },
   { topic: "seo", words: ["seo score", "on-page", "onpage", "on page", "rankmath", "seo audit", "seo health", "my seo", "seo status", "technical seo", "seo result"] },
   { topic: "health", words: ["health", "domain rating", "domain authority", "organic traffic", "organic keyword", "traffic", "ahrefs", "visibility", " dr ", "authority"] },
-  { topic: "qa", words: [" qa ", "checklist", "quality assurance", "qa page", "pages crawled", "page check", "brand protection"] },
+  { topic: "qa", words: [" qa ", "checklist", "quality assurance", "qa page", "pages crawled", "page check", "brand protection", "indexed", "index status", "pages indexed", "not indexed", "canonical", "html lang", "meta description", "h1", "audit page", "page audit", "seo issue", "ar issue", "alt tag", "missing alt"] },
   { topic: "ranking", words: ["rank", "ranking", "position", "serp", "keyword", "top 10", "top ten", "top 3", "top three", "top 100", "page one", "page 1", "google", "search result", "week", "changed", "moved", "movement"] },
 ];
 
@@ -99,6 +99,8 @@ export function parseQuery(text: string, vocab: { countryCodes: string[]; keywor
 
   const comparison = has(t, " vs ", "versus", "compare", "comparison", "difference between", "mobile and desktop", "desktop and mobile");
   const count = has(t, "how many", "number of", " count", "how much", "total number");
+  // "how many pages" with no other topic → QA
+  if (orderedTopics.length === 0 && count && has(t, " page")) orderedTopics.push("qa");
   const greeting = has(t, " hi ", " hello ", " hey ", "thank", "good morning", "good afternoon", "good evening", "what can you do", "help me", " who are you");
 
   // A bare "compare … mobile/desktop" with no topic is a PageSpeed question.

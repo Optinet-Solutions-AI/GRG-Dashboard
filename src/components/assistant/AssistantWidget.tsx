@@ -295,7 +295,7 @@ export function AssistantWidget() {
                 )}
                 <div
                   className={[
-                    "max-w-[78%] whitespace-pre-wrap rounded-2xl px-3.5 py-2 text-sm leading-relaxed",
+                    "max-w-[80%] break-words whitespace-pre-wrap rounded-2xl px-3.5 py-2 text-sm leading-relaxed",
                     m.role === "user"
                       ? "rounded-tr-sm bg-blue-600 text-white shadow-sm"
                       : "rounded-tl-sm bg-slate-100 text-slate-800",
