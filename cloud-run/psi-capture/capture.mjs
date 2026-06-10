@@ -33,7 +33,15 @@ async function captureReport(page, url, strategy) {
     return maxBottom;
   });
   const height = cutY > 200 ? Math.min(Math.ceil(cutY + 28), 1400) : 540;
-  return page.screenshot({ clip: { x: 0, y: 0, width: 1000, height }, type: "png" });
+  // Read the 4 category scores from the SAME report, so the stored scores always
+  // match the screenshot (no drift between the API gauges and the proof image).
+  const scores = await page.evaluate(() => {
+    const t = document.body.innerText;
+    const pick = (label) => { const m = t.match(new RegExp("(\\d{1,3})\\s+" + label)); return m ? parseInt(m[1], 10) : null; };
+    return { performance: pick("Performance"), accessibility: pick("Accessibility"), bestPractices: pick("Best Practices"), seo: pick("SEO") };
+  });
+  const buffer = await page.screenshot({ clip: { x: 0, y: 0, width: 1000, height }, type: "png" });
+  return { buffer, scores };
 }
 
 async function main() {
@@ -55,19 +63,24 @@ async function main() {
   for (const u of urls) {
     const patch = { pagespeed_url_id: u.id, date };
     for (const strategy of ["mobile", "desktop"]) {
-      let buf = null;
-      for (let attempt = 1; attempt <= 2 && !buf; attempt++) {
+      let res = null;
+      for (let attempt = 1; attempt <= 2 && !res; attempt++) {
         try {
           console.log(`Capturing ${strategy} report for ${u.url} (attempt ${attempt}) …`);
-          buf = await captureReport(page, u.url, strategy);
+          res = await captureReport(page, u.url, strategy);
         } catch (e) {
           console.log(`  ${strategy} attempt ${attempt} failed:`, e.message);
         }
       }
-      if (!buf) { console.log(`  ${strategy} gave up.`); continue; }
+      if (!res) { console.log(`  ${strategy} gave up.`); continue; }
+      const s = res.scores;
+      patch[`${strategy}_score`] = s.performance;
+      patch[`${strategy}_accessibility`] = s.accessibility;
+      patch[`${strategy}_best_practices`] = s.bestPractices;
+      patch[`${strategy}_seo`] = s.seo;
       try {
         const path = `pagespeed/${u.id}-${strategy}-report-${date}.png`;
-        const up = await db.storage.from("screenshots").upload(path, buf, { contentType: "image/png", upsert: true });
+        const up = await db.storage.from("screenshots").upload(path, res.buffer, { contentType: "image/png", upsert: true });
         if (up.error) throw new Error(up.error.message);
         patch[`${strategy}_screenshot_path`] = path;
       } catch (e) {

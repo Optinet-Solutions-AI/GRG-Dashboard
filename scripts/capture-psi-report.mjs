@@ -35,7 +35,13 @@ async function captureReport(page, url, strategy) {
     return maxBottom;
   });
   const height = cutY > 200 ? Math.min(Math.ceil(cutY + 28), 1400) : 540;
-  return page.screenshot({ clip: { x: 0, y: 0, width: 1000, height }, type: "png" });
+  const scores = await page.evaluate(() => {
+    const t = document.body.innerText;
+    const pick = (label) => { const m = t.match(new RegExp("(\\d{1,3})\\s+" + label)); return m ? parseInt(m[1], 10) : null; };
+    return { performance: pick("Performance"), accessibility: pick("Accessibility"), bestPractices: pick("Best Practices"), seo: pick("SEO") };
+  });
+  const buffer = await page.screenshot({ clip: { x: 0, y: 0, width: 1000, height }, type: "png" });
+  return { buffer, scores };
 }
 
 async function main() {
@@ -59,12 +65,17 @@ async function main() {
     for (const strategy of ["mobile", "desktop"]) {
       try {
         process.stdout.write(`Capturing ${strategy} report for ${u.url} … `);
-        const buf = await captureReport(page, u.url, strategy);
+        const res = await captureReport(page, u.url, strategy);
+        const s = res.scores;
+        patch[`${strategy}_score`] = s.performance;
+        patch[`${strategy}_accessibility`] = s.accessibility;
+        patch[`${strategy}_best_practices`] = s.bestPractices;
+        patch[`${strategy}_seo`] = s.seo;
         const path = `pagespeed/${u.id}-${strategy}-report-${date}.png`;
-        const up = await db.storage.from("screenshots").upload(path, buf, { contentType: "image/png", upsert: true });
+        const up = await db.storage.from("screenshots").upload(path, res.buffer, { contentType: "image/png", upsert: true });
         if (up.error) throw new Error(up.error.message);
         patch[`${strategy}_screenshot_path`] = path;
-        console.log("ok");
+        console.log(`ok (perf ${s.performance})`);
       } catch (e) {
         console.log("FAILED:", e.message);
       }
