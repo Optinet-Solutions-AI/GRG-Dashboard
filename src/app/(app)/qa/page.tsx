@@ -138,8 +138,8 @@ export default async function QaPage({ searchParams }: { searchParams: Promise<{
               <span className="ml-2 text-xs font-normal text-slate-400">({pageRows.length} pages)</span>
             </h2>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[60rem] text-xs">
+          <div className="overflow-x-auto [scrollbar-width:thin]">
+            <table className="min-w-max text-xs">
               <thead className="sticky top-0 bg-slate-50">
                 <tr className="border-b border-slate-200">
                   {PAGE_COL_LABELS.map((col) => (
@@ -164,7 +164,7 @@ export default async function QaPage({ searchParams }: { searchParams: Promise<{
                       return (
                         <td
                           key={col.key}
-                          className="max-w-[14rem] truncate px-2.5 py-1.5 align-top"
+                          className="max-w-[16rem] whitespace-nowrap px-2.5 py-1.5 align-top"
                           title={val || undefined}
                         >
                           {isUrl ? (
