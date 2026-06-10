@@ -25,11 +25,11 @@ export default async function HealthPage({ searchParams }: { searchParams: Promi
 
   let q = supabase
     .from("health_snapshots")
-    .select("id, domain_rating, referring_domains, total_visitors, organic_traffic, organic_keywords, screenshot_path, site_id, sites!inner(display_name, sort_order)")
+    .select("id, date, domain_rating, referring_domains, total_visitors, organic_traffic, organic_keywords, screenshot_path, site_id, sites!inner(display_name, sort_order)")
     .order("date", { ascending: false });
   if (site) q = q.eq("site_id", site);
   const { data } = await q;
-  const rows = (data ?? []) as unknown as Array<Record<string, unknown> & { id: string; screenshot_path: string | null; sites: { display_name: string } }>;
+  const rows = (data ?? []) as unknown as Array<Record<string, unknown> & { id: string; date: string; screenshot_path: string | null; sites: { display_name: string } }>;
 
   const signed = await signScreenshots(rows.map((r) => r.screenshot_path));
 
@@ -41,7 +41,10 @@ export default async function HealthPage({ searchParams }: { searchParams: Promi
       ) : null}
       {rows.map((r) => (
         <div key={r.id} className="rounded-xl border border-slate-200 bg-white p-4">
-          <div className="mb-3 font-semibold text-slate-900">{r.sites.display_name}</div>
+          <div className="mb-3 flex items-center justify-between">
+            <span className="font-semibold text-slate-900">{r.sites.display_name}</span>
+            <span className="text-xs text-slate-500">{r.date}</span>
+          </div>
           <div className="grid gap-4 md:grid-cols-2">
             <div>
               {isAdmin ? (
