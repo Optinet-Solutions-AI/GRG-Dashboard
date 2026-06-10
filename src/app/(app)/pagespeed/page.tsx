@@ -125,7 +125,7 @@ export default async function PageSpeedPage({ searchParams }: { searchParams: Pr
             <DeviceReport label="Desktop" perf={r.desktop_score} a11y={r.desktop_accessibility} bp={r.desktop_best_practices} seo={r.desktop_seo} />
           </div>
           {(r.mobile_screenshot_path || r.desktop_screenshot_path) ? (
-            <div className="mt-4 space-y-4">
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
               <ReportShot label="Mobile" src={r.mobile_screenshot_path ? signed.get(r.mobile_screenshot_path) : undefined} />
               <ReportShot label="Desktop" src={r.desktop_screenshot_path ? signed.get(r.desktop_screenshot_path) : undefined} />
             </div>
