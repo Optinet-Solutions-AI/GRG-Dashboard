@@ -67,11 +67,16 @@ export default async function QaPage({ searchParams }: { searchParams: Promise<{
     syncedAt = siteRow?.synced_at as string | null;
   }
 
-  const siteChecklistItems = SITE_COL_ORDER.map((field) => ({
-    field,
-    label: SITE_FIELD_LABELS[field] ?? field,
-    value: (siteRow?.[field] as string) ?? "",
-  }));
+  // These fields have dedicated dashboard pages (Health, SEO Score, PageSpeed).
+  const HIDDEN_FIELDS = new Set(["website", "page_seo_score", "rankmath_seo_analyzer", "ahrefs_health_issue", "pagespeed_desktop", "pagespeed_mobile"]);
+
+  const siteChecklistItems = SITE_COL_ORDER
+    .filter((field) => !HIDDEN_FIELDS.has(field))
+    .map((field) => ({
+      field,
+      label: SITE_FIELD_LABELS[field] ?? field,
+      value: (siteRow?.[field] as string) ?? "",
+    }));
 
   const noData = !siteRow && pageRows.length === 0;
 
