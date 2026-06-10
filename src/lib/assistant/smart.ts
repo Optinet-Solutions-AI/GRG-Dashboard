@@ -1,13 +1,13 @@
 import "server-only";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { parseQuery, type ParsedQuery, type Topic } from "./nlu";
+import { normalize } from "./text";
+import {
+  rankingAnswer, focusAnswer, qaPagesAnswer, siteChecklistAnswer, fallbackMessage,
+  bullets, type GridRow, type QaPageRow, type SiteAuditRow,
+} from "./answers";
 
 type SB = Awaited<ReturnType<typeof createServerSupabaseClient>>;
-type GridRow = { keyword: string; country: string; position: number | null; prev_position: number | null };
-
-const COUNTRY_NAME: Record<string, string> = { SA: "Saudi Arabia", AE: "UAE", QA: "Qatar", OM: "Oman", KW: "Kuwait", BH: "Bahrain" };
-const cname = (code: string) => COUNTRY_NAME[code] ?? code;
-const bullets = (items: string[]) => items.map((i) => `• ${i}`).join("\n");
 
 function todayLocal(): string {
   const d = new Date();
@@ -31,88 +31,6 @@ async function loadGrid(sb: SB, siteId: string): Promise<{ latest: string | null
   if (wk.length === 0) return { latest: null, prev: null, rows: [] };
   const { data } = await sb.rpc("ranking_grid", { p_site_id: siteId, p_week: wk[0] });
   return { latest: wk[0], prev: wk[1] ?? null, rows: (data ?? []) as GridRow[] };
-}
-
-function rankingAnswer(q: ParsedQuery, latest: string | null, prev: string | null, all: GridRow[]): string {
-  if (!latest || all.length === 0) return "📊 Rankings\nNo ranking data has been imported yet.";
-  const rows = q.country ? all.filter((r) => r.country === q.country) : all;
-  const scope = q.country ? ` · ${cname(q.country)}` : "";
-  const tag = (c: string) => (q.country ? "" : ` (${cname(c)})`);
-
-  // specific keyword
-  if (q.keyword) {
-    const cells = all.filter((r) => r.keyword === q.keyword);
-    if (cells.length === 0) return `I don't track “${q.keyword}”.`;
-    const lines = cells.map((c) => {
-      const pos = c.position == null ? "not ranking" : `#${c.position}`;
-      let mv = "";
-      if (c.position != null && c.prev_position != null) mv = c.position < c.prev_position ? ` (↑ from #${c.prev_position})` : c.position > c.prev_position ? ` (↓ from #${c.prev_position})` : " (no change)";
-      else if (c.position != null && c.prev_position == null) mv = " (newly entered)";
-      return `${cname(c.country)}: ${pos}${mv}`;
-    });
-    return `🔎 “${q.keyword}” · week ${latest}\n${bullets(lines)}`;
-  }
-
-  // direction list
-  if (q.direction) {
-    const moved = rows
-      .filter((r) => r.position != null && r.prev_position != null && (q.direction === "up" ? r.position < r.prev_position : r.position > r.prev_position))
-      .map((r) => ({ ...r, delta: Math.abs((r.prev_position ?? 0) - (r.position ?? 0)) }))
-      .sort((a, b) => b.delta - a.delta);
-    const icon = q.direction === "up" ? "⬆" : "⬇";
-    const verb = q.direction === "up" ? "improved" : "dropped";
-    if (moved.length === 0) return `${icon} No keywords ${verb}${scope} between ${prev ?? "?"} and ${latest}.`;
-    return `${icon} ${moved.length} keyword${moved.length === 1 ? "" : "s"} ${verb}${scope} · ${prev ?? "?"} → ${latest}\n${bullets(moved.slice(0, 8).map((r) => `“${r.keyword}”${tag(r.country)} ${r.prev_position}→${r.position}`))}`;
-  }
-
-  // extremes
-  if (q.extreme === "best") {
-    const ranked = rows.filter((r) => r.position != null).sort((a, b) => (a.position ?? 0) - (b.position ?? 0)).slice(0, 5);
-    if (ranked.length === 0) return `🏆 Best positions${scope}\nNothing is ranking in the top 100 yet.`;
-    return `🏆 Best positions${scope} · week ${latest}\n${bullets(ranked.map((r) => `“${r.keyword}”${tag(r.country)} #${r.position}`))}`;
-  }
-  if (q.extreme === "worst") {
-    const notRanking = rows.filter((r) => r.position == null);
-    const worst = rows.filter((r) => r.position != null).sort((a, b) => (b.position ?? 0) - (a.position ?? 0)).slice(0, 5);
-    const head = `📉 Weakest${scope} · week ${latest}`;
-    const nr = notRanking.length ? `${notRanking.length} keyword×country not ranking at all.` : "";
-    const list = worst.length ? bullets(worst.map((r) => `“${r.keyword}”${tag(r.country)} #${r.position}`)) : "";
-    return [head, nr, list].filter(Boolean).join("\n");
-  }
-
-  // summary
-  let top3 = 0, top10 = 0, ranked = 0, improved = 0, dropped = 0, entered = 0, lost = 0;
-  let gain: { kw: string; c: string; from: number; to: number; d: number } | null = null;
-  let drop: { kw: string; c: string; from: number; to: number; d: number } | null = null;
-  for (const r of rows) {
-    if (r.position != null) { ranked++; if (r.position <= 10) top10++; if (r.position <= 3) top3++; }
-    const p = r.position, pr = r.prev_position;
-    if (p != null && pr != null) {
-      if (p < pr) { improved++; const d = pr - p; if (!gain || d > gain.d) gain = { kw: r.keyword, c: r.country, from: pr, to: p, d }; }
-      else if (p > pr) { dropped++; const d = p - pr; if (!drop || d > drop.d) drop = { kw: r.keyword, c: r.country, from: pr, to: p, d }; }
-    } else if (p != null) entered++;
-    else if (pr != null) lost++;
-  }
-  const lines = [
-    `In top 100: ${ranked} of ${rows.length}`,
-    `In top 10: ${top10}   ·   In top 3: ${top3}`,
-    `Improved: ${improved}  ·  Dropped: ${dropped}  ·  New: ${entered}  ·  Fell out: ${lost}`,
-  ];
-  if (gain) lines.push(`⬆ Biggest gain: “${gain.kw}”${tag(gain.c)} ${gain.from}→${gain.to}`);
-  if (drop) lines.push(`⬇ Biggest drop: “${drop.kw}”${tag(drop.c)} ${drop.from}→${drop.to}`);
-  return `📊 Rankings${scope} · week ${latest}${prev ? ` (vs ${prev})` : ""}\n${bullets(lines)}`;
-}
-
-function focusAnswer(q: ParsedQuery, latest: string | null, all: GridRow[]): string {
-  if (!latest || all.length === 0) return "🎯 No ranking data yet, so I can't suggest keywords to focus on.";
-  const rows = q.country ? all.filter((r) => r.country === q.country) : all;
-  const scope = q.country ? ` · ${cname(q.country)}` : "";
-  const tag = (c: string) => (q.country ? "" : ` (${cname(c)})`);
-  const notRanking = rows.filter((r) => r.position == null).map((r) => ({ kw: r.keyword, c: r.country, why: "not ranking" }));
-  const outside = rows.filter((r) => r.position != null && r.position > 10).sort((a, b) => (b.position ?? 0) - (a.position ?? 0)).map((r) => ({ kw: r.keyword, c: r.country, why: `#${r.position}` }));
-  const picks = [...notRanking, ...outside].slice(0, 6);
-  if (picks.length === 0) return `🎯 Every tracked keyword is already in the top 10${scope}. Focus on holding those positions.`;
-  return `🎯 Focus on these weakest keywords${scope}:\n${bullets(picks.map((p) => `“${p.kw}”${tag(p.c)} — ${p.why}`))}\nThey're furthest from page one, so they have the most upside.`;
 }
 
 // ---------------- backlinks ----------------
@@ -175,7 +93,7 @@ async function pagespeedAnswer(sb: SB, siteId: string, q: ParsedQuery): Promise<
   ])}\n(scores out of 100)${trend}`;
 }
 
-// ---------------- seo / health / qa / freshness ----------------
+// ---------------- seo / health ----------------
 async function seoAnswer(sb: SB, siteId: string): Promise<string> {
   const { data } = await sb.from("seo_scores").select("date, seo_score, passed_tests, warnings, failed_tests").eq("site_id", siteId).order("date", { ascending: false }).limit(1);
   const r = (data ?? [])[0] as { date: string; seo_score: number | null; passed_tests: number | null; warnings: number | null; failed_tests: number | null } | undefined;
@@ -195,33 +113,21 @@ async function healthAnswer(sb: SB, siteId: string): Promise<string> {
   ])}`;
 }
 
-async function qaAnswer(sb: SB, siteId: string): Promise<string> {
-  const { data: pages } = await sb
+// ---------------- qa pages / site checklist ----------------
+async function loadQaPages(sb: SB, siteId: string): Promise<QaPageRow[]> {
+  const { data } = await sb
     .from("qa_page_audit")
-    .select("indexed_gsc, status, seo_issues, ar_alignment_issues")
+    .select("url, indexed_gsc, status, seo_issues, ar_alignment_issues, images_missing_alt, title, meta_description, canonical, h1_count, lang")
     .eq("site_id", siteId);
-  const rows = (pages ?? []) as Array<{ indexed_gsc: string | null; status: string | null; seo_issues: string | null; ar_alignment_issues: string | null }>;
-
-  if (rows.length === 0) {
-    const { count: oldCount } = await sb.from("qa_pages").select("id", { count: "exact", head: true }).eq("site_id", siteId);
-    return `🧪 QA\n${oldCount ?? 0} pages in the sitemap checklist. Sync the QA Google Sheet for per-page audit data.`;
-  }
-
-  const total = rows.length;
-  const indexed = rows.filter((r) => /done|yes|indexed|true/i.test(r.indexed_gsc ?? "")).length;
-  const notIndexed = total - indexed;
-  const live = rows.filter((r) => r.status === "200").length;
-  const withSeoIssues = rows.filter((r) => r.seo_issues && r.seo_issues.trim() && r.seo_issues.trim() !== "—").length;
-  const withArIssues = rows.filter((r) => r.ar_alignment_issues && r.ar_alignment_issues.trim() && r.ar_alignment_issues.trim() !== "—").length;
-
-  return `🧪 QA Audit · ${total} pages\n${bullets([
-    `Indexed in GSC: ${indexed} / ${total}${notIndexed > 0 ? ` (${notIndexed} not indexed)` : ""}`,
-    `Live (200 status): ${live}`,
-    ...(withSeoIssues > 0 ? [`SEO issues flagged: ${withSeoIssues} pages`] : []),
-    ...(withArIssues > 0 ? [`AR alignment issues: ${withArIssues} pages`] : []),
-  ])}`;
+  return (data ?? []) as QaPageRow[];
 }
 
+async function loadSiteAudit(sb: SB, siteId: string): Promise<SiteAuditRow | null> {
+  const { data } = await sb.from("qa_site_audit").select("*").eq("site_id", siteId).maybeSingle();
+  return (data ?? null) as SiteAuditRow | null;
+}
+
+// ---------------- freshness ----------------
 async function maxDate(sb: SB, table: string, col: string): Promise<string | null> {
   const { data } = await sb.from(table).select(col).order(col, { ascending: false }).limit(1);
   const row = (data ?? [])[0] as unknown as Record<string, string> | undefined;
@@ -243,9 +149,6 @@ async function freshnessAnswer(sb: SB): Promise<string> {
   return `🕒 Stale or missing (14+ days)\n${bullets(stale)}`;
 }
 
-const CAPABILITIES =
-  "I can answer questions about this dashboard's data:\n• Rankings — overall, by country (Saudi/UAE/Kuwait/Qatar/Bahrain/Oman), what improved/dropped, best/worst keywords\n• What to focus on\n• Backlinks\n• PageSpeed (mobile vs desktop)\n• SEO score & site health\n• QA — how many pages are indexed, live, have SEO/AR issues\n• Data freshness\nAsk in plain English.";
-
 /** Tokenless smart answer: parse the question, then compute the answer from live data. */
 export async function smartAnswer(question: string, siteId?: string | null): Promise<string> {
   const sb = await createServerSupabaseClient();
@@ -262,16 +165,23 @@ export async function smartAnswer(question: string, siteId?: string | null): Pro
   };
 
   const q = parseQuery(question, vocab);
+  if (q.topics.length === 0) return fallbackMessage(q);
 
-  if (q.topics.length === 0) {
-    if (q.greeting) return `👋 Hi! ${CAPABILITIES}`;
-    return `🤔 I'm not sure which metric you mean.\n\n${CAPABILITIES}`;
-  }
-
+  const normalized = normalize(question);
   let topics = q.topics;
-  if (topics.includes("focus") && topics.includes("ranking") && !q.country && !q.direction && !q.extreme && !q.keyword) {
+
+  // "what should I focus on" alone shouldn't also dump a full ranking summary.
+  if (topics.includes("focus") && topics.includes("ranking") && !q.country && !q.direction && !q.extreme && !q.keyword && !q.threshold && !q.notRanking) {
     topics = topics.filter((t) => t !== "ranking");
   }
+  // A page-level QA question (filter/url) shouldn't also fire the broad ranking catch-all.
+  const qaPageLevel = topics.includes("qa") && (q.filter !== null || q.url !== null);
+  if (qaPageLevel) topics = topics.filter((t) => t !== "ranking");
+  // "indexed" lives in both QA and backlinks vocab — drop a non-concrete QA tag when
+  // another topic is present and the user didn't actually ask about pages.
+  const mentionsPage = normalized.includes("page") || normalized.includes(" qa ");
+  const qaConcrete = q.filter !== null || q.url !== null || mentionsPage;
+  if (topics.includes("qa") && !qaConcrete && topics.length > 1) topics = topics.filter((t) => t !== "qa");
 
   const needsGrid = topics.includes("ranking") || topics.includes("focus");
   const grid = needsGrid ? await loadGrid(sb, site.id) : null;
@@ -285,7 +195,8 @@ export async function smartAnswer(question: string, siteId?: string | null): Pro
       case "pagespeed": parts.push(await pagespeedAnswer(sb, site.id, q)); break;
       case "seo": parts.push(await seoAnswer(sb, site.id)); break;
       case "health": parts.push(await healthAnswer(sb, site.id)); break;
-      case "qa": parts.push(await qaAnswer(sb, site.id)); break;
+      case "qa": parts.push(qaPagesAnswer(q, await loadQaPages(sb, site.id))); break;
+      case "checklist": parts.push(siteChecklistAnswer(normalized, await loadSiteAudit(sb, site.id))); break;
       case "freshness": parts.push(await freshnessAnswer(sb)); break;
     }
   }
