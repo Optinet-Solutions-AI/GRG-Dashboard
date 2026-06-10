@@ -68,7 +68,10 @@ export async function syncBacklinks(
 ): Promise<{ ok?: boolean; message?: string; error?: string }> {
   await requireAdmin();
   try {
-    const r = await syncBacklinksFromSheet();
+    // Pass the session-based client so the admin's own RLS identity performs the
+    // writes — no SUPABASE_SERVICE_ROLE_KEY needed in the Vercel env for this path.
+    const supabase = await createServerSupabaseClient();
+    const r = await syncBacklinksFromSheet("gulfrecoverygroup.com", supabase);
     revalidatePath("/backlinks");
     return { ok: true, message: `Synced ${r.synced} backlinks from the sheet${r.date ? ` (latest ${r.date})` : ""}.` };
   } catch (e) {

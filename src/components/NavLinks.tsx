@@ -11,7 +11,7 @@ export function NavLinks({ items }: { items: NavItem[] }) {
   const qs = site ? `?site=${encodeURIComponent(site)}` : "";
 
   return (
-    <nav className="flex flex-wrap items-center gap-1 px-3 pb-2 sm:px-5">
+    <nav className="flex items-center gap-1 overflow-x-auto px-3 pb-2 [scrollbar-width:none] sm:px-5 [&::-webkit-scrollbar]:hidden">
       {items.map((item) => {
         const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
         return (
