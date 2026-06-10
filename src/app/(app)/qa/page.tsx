@@ -4,34 +4,34 @@ import { SITE_COL_ORDER, SITE_FIELD_LABELS } from "@/lib/qa/parse-qa-sheet";
 import { SyncQaButton } from "@/components/qa/SyncQaButton";
 import { QaSiteChecklist } from "@/components/qa/QaSiteChecklist";
 
-// Column labels for the per-page audit table (26 cols)
-const PAGE_COL_LABELS: { key: string; label: string }[] = [
-  { key: "group_name", label: "Group" },
-  { key: "url", label: "URL" },
-  { key: "indexed_gsc", label: "Indexed GSC" },
-  { key: "en_equivalent", label: "EN Equiv." },
-  { key: "permalink", label: "Permalink" },
-  { key: "status", label: "Status" },
-  { key: "lang", label: "Lang" },
-  { key: "dir", label: "Dir" },
-  { key: "title", label: "Title" },
-  { key: "title_length", label: "Title Len" },
-  { key: "meta_description", label: "Meta Desc" },
-  { key: "meta_length", label: "Meta Len" },
-  { key: "canonical", label: "Canonical" },
-  { key: "h1_count", label: "H1 #" },
-  { key: "h1", label: "H1" },
-  { key: "h2_count", label: "H2 #" },
-  { key: "h2_list", label: "H2 List" },
-  { key: "h3_count", label: "H3 #" },
-  { key: "h3_list", label: "H3 List" },
-  { key: "images_total", label: "Imgs" },
-  { key: "images_with_alt", label: "With Alt" },
-  { key: "images_decorative", label: "Decorative" },
-  { key: "images_missing_alt", label: "Missing Alt" },
-  { key: "missing_alt_srcs", label: "Missing Alt Srcs" },
-  { key: "seo_issues", label: "SEO Issues" },
-  { key: "ar_alignment_issues", label: "AR Issues" },
+// Column definitions — w is the fixed column width used in table-fixed layout
+const PAGE_COL_LABELS: { key: string; label: string; w: string }[] = [
+  { key: "group_name",          label: "Group",           w: "3.5rem"  },
+  { key: "url",                 label: "URL",             w: "16rem"   },
+  { key: "indexed_gsc",         label: "Indexed GSC",     w: "6.5rem"  },
+  { key: "en_equivalent",       label: "EN Equiv.",       w: "10rem"   },
+  { key: "permalink",           label: "Permalink",       w: "10rem"   },
+  { key: "status",              label: "Status",          w: "4rem"    },
+  { key: "lang",                label: "Lang",            w: "3rem"    },
+  { key: "dir",                 label: "Dir",             w: "3rem"    },
+  { key: "title",               label: "Title",           w: "14rem"   },
+  { key: "title_length",        label: "Title Len",       w: "5rem"    },
+  { key: "meta_description",    label: "Meta Desc",       w: "14rem"   },
+  { key: "meta_length",         label: "Meta Len",        w: "5rem"    },
+  { key: "canonical",           label: "Canonical",       w: "10rem"   },
+  { key: "h1_count",            label: "H1 #",            w: "3.5rem"  },
+  { key: "h1",                  label: "H1",              w: "14rem"   },
+  { key: "h2_count",            label: "H2 #",            w: "3.5rem"  },
+  { key: "h2_list",             label: "H2 List",         w: "14rem"   },
+  { key: "h3_count",            label: "H3 #",            w: "3.5rem"  },
+  { key: "h3_list",             label: "H3 List",         w: "14rem"   },
+  { key: "images_total",        label: "Imgs",            w: "3.5rem"  },
+  { key: "images_with_alt",     label: "With Alt",        w: "5rem"    },
+  { key: "images_decorative",   label: "Decorative",      w: "5.5rem"  },
+  { key: "images_missing_alt",  label: "Missing Alt",     w: "5.5rem"  },
+  { key: "missing_alt_srcs",    label: "Missing Alt Srcs",w: "12rem"   },
+  { key: "seo_issues",          label: "SEO Issues",      w: "14rem"   },
+  { key: "ar_alignment_issues", label: "AR Issues",       w: "14rem"   },
 ];
 
 type PageRow = Record<string, string | number | null>;
@@ -139,15 +139,20 @@ export default async function QaPage({ searchParams }: { searchParams: Promise<{
             </h2>
           </div>
           <div className="overflow-x-auto [scrollbar-width:thin]">
-            <table className="min-w-max text-xs">
+            <table className="table-fixed text-xs" style={{ width: PAGE_COL_LABELS.reduce((s, c) => s + parseFloat(c.w) * 16, 0) }}>
+              <colgroup>
+                {PAGE_COL_LABELS.map((col) => (
+                  <col key={col.key} style={{ width: col.w }} />
+                ))}
+              </colgroup>
               <thead className="sticky top-0 bg-slate-50">
                 <tr className="border-b border-slate-200">
                   {PAGE_COL_LABELS.map((col) => (
                     <th
                       key={col.key}
-                      className="whitespace-nowrap px-2.5 py-2 text-left font-medium text-slate-500"
+                      className="overflow-hidden px-2.5 py-2 text-left font-medium text-slate-500"
                     >
-                      {col.label}
+                      <div className="truncate">{col.label}</div>
                     </th>
                   ))}
                 </tr>
@@ -164,17 +169,19 @@ export default async function QaPage({ searchParams }: { searchParams: Promise<{
                       return (
                         <td
                           key={col.key}
-                          className="max-w-[16rem] whitespace-nowrap px-2.5 py-1.5 align-top"
+                          className="overflow-hidden px-2.5 py-1.5 align-top"
                           title={val || undefined}
                         >
                           {isUrl ? (
-                            <a href={val} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">
-                              {val}
-                            </a>
+                            <div className="truncate">
+                              <a href={val} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">
+                                {val}
+                              </a>
+                            </div>
                           ) : (
-                            <span className={val ? "text-slate-700" : "text-slate-300"}>
+                            <div className={`truncate ${val ? "text-slate-700" : "text-slate-300"}`}>
                               {val || "—"}
-                            </span>
+                            </div>
                           )}
                         </td>
                       );
