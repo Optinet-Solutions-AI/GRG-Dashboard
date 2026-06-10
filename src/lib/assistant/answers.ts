@@ -150,31 +150,53 @@ export function qaPagesAnswer(q: ParsedQuery, rows: QaPageRow[]): string {
     ])}`;
   }
 
-  switch (q.filter) {
-    case "not-indexed":
-      return capList("🚫 Pages not indexed in GSC", rows.filter((r) => !isIndexed(r.indexed_gsc)).map((r) => r.url ?? "(no url)"));
-    case "seo-issues":
-      return capList("⚠️ Pages with SEO issues", rows.filter((r) => truthy(r.seo_issues)).map((r) => `${r.url ?? "(no url)"} — ${r.seo_issues}`));
-    case "ar-issues":
-      return capList("🔤 Pages with Arabic alignment issues", rows.filter((r) => truthy(r.ar_alignment_issues)).map((r) => `${r.url ?? "(no url)"} — ${r.ar_alignment_issues}`));
-    case "missing-alt":
-      return capList("🖼️ Pages with images missing alt text", rows.filter((r) => Number(r.images_missing_alt) > 0).map((r) => `${r.url ?? "(no url)"} — ${r.images_missing_alt} missing`));
-    case "non-200":
-      return capList("🔧 Pages not returning 200", rows.filter((r) => (r.status ?? "") !== "200").map((r) => `${r.url ?? "(no url)"} — ${r.status ?? "?"}`));
-    default: {
-      const total = rows.length;
-      const indexed = rows.filter((r) => isIndexed(r.indexed_gsc)).length;
-      const live = rows.filter((r) => r.status === "200").length;
-      const seo = rows.filter((r) => truthy(r.seo_issues)).length;
-      const ar = rows.filter((r) => truthy(r.ar_alignment_issues)).length;
-      return `🧪 QA Audit · ${total} pages\n${bullets([
-        `Indexed in GSC: ${indexed} / ${total}${total - indexed > 0 ? ` (${total - indexed} not indexed)` : ""}`,
-        `Live (200): ${live}`,
-        ...(seo > 0 ? [`SEO issues: ${seo} pages`] : []),
-        ...(ar > 0 ? [`AR alignment issues: ${ar} pages`] : []),
-      ])}`;
+  if (q.filter) {
+    switch (q.filter) {
+      case "not-indexed":
+        return capList("🚫 Pages not indexed in GSC", rows.filter((r) => !isIndexed(r.indexed_gsc)).map((r) => r.url ?? "(no url)"));
+      case "seo-issues":
+        return capList("⚠️ Pages with SEO issues", rows.filter((r) => truthy(r.seo_issues)).map((r) => `${r.url ?? "(no url)"} — ${r.seo_issues}`));
+      case "ar-issues":
+        return capList("🔤 Pages with Arabic alignment issues", rows.filter((r) => truthy(r.ar_alignment_issues)).map((r) => `${r.url ?? "(no url)"} — ${r.ar_alignment_issues}`));
+      case "missing-alt":
+        return capList("🖼️ Pages with images missing alt text", rows.filter((r) => Number(r.images_missing_alt) > 0).map((r) => `${r.url ?? "(no url)"} — ${r.images_missing_alt} missing`));
+      case "non-200":
+        return capList("🔧 Pages not returning 200", rows.filter((r) => (r.status ?? "") !== "200").map((r) => `${r.url ?? "(no url)"} — ${r.status ?? "?"}`));
     }
   }
+
+  // "what are the specific pages" / "list the pages" → list URLs (no specific filter).
+  // Sort pages with problems first so the actionable ones surface within the cap.
+  if (q.list) {
+    const score = (r: QaPageRow) =>
+      (!isIndexed(r.indexed_gsc) ? 4 : 0) +
+      (r.status && r.status !== "200" ? 3 : 0) +
+      (truthy(r.seo_issues) ? 2 : 0) +
+      (truthy(r.ar_alignment_issues) ? 1 : 0);
+    const line = (r: QaPageRow) => {
+      const flags: string[] = [];
+      if (!isIndexed(r.indexed_gsc)) flags.push("not indexed");
+      if (r.status && r.status !== "200") flags.push(`status ${r.status}`);
+      if (truthy(r.seo_issues)) flags.push("SEO issue");
+      if (truthy(r.ar_alignment_issues)) flags.push("AR issue");
+      return `${r.url ?? "(no url)"}${flags.length ? ` — ${flags.join(", ")}` : ""}`;
+    };
+    const sorted = [...rows].sort((a, b) => score(b) - score(a));
+    const body = capList("🧪 Audited pages", sorted.map(line));
+    return `${body}\nNarrow with: “which pages aren't indexed”, “pages with SEO issues”, or “pages with Arabic issues”.`;
+  }
+
+  const total = rows.length;
+  const indexed = rows.filter((r) => isIndexed(r.indexed_gsc)).length;
+  const live = rows.filter((r) => r.status === "200").length;
+  const seo = rows.filter((r) => truthy(r.seo_issues)).length;
+  const ar = rows.filter((r) => truthy(r.ar_alignment_issues)).length;
+  return `🧪 QA Audit · ${total} pages\n${bullets([
+    `Indexed in GSC: ${indexed} / ${total}${total - indexed > 0 ? ` (${total - indexed} not indexed)` : ""}`,
+    `Live (200): ${live}`,
+    ...(seo > 0 ? [`SEO issues: ${seo} pages`] : []),
+    ...(ar > 0 ? [`AR alignment issues: ${ar} pages`] : []),
+  ])}\nAsk “list the pages” or “which pages aren't indexed” for the specific URLs.`;
 }
 
 // ───────────────────────── whole-site checklist ─────────────────────────

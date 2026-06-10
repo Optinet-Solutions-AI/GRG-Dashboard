@@ -47,6 +47,9 @@ const CASES: Case[] = [
   { q: "pages not returning 200", topicsInclude: ["qa"], filter: "non-200" },
   { q: "which pages are not live", topicsInclude: ["qa"], filter: "non-200" },
   { q: "details for /ar/about", topicsInclude: ["qa"] },
+  { q: "what are the specific pages", topicsInclude: ["qa"], filter: null },
+  { q: "list the pages", topicsInclude: ["qa"], filter: null },
+  { q: "show me the pages", topicsInclude: ["qa"], filter: null },
 
   // ── checklist ──
   { q: "is schema set up?", topicsInclude: ["checklist"] },

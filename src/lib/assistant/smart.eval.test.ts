@@ -39,6 +39,21 @@ describe("answer shapes", () => {
     expect(out).toContain("(14)");
   });
 
+  it("lists the specific pages when asked (no filter), surfacing flagged ones first", () => {
+    const rows: QaPageRow[] = [
+      mkPage({ url: "/clean1" }),
+      mkPage({ url: "/clean2" }),
+      mkPage({ url: "/bad", indexed_gsc: "No", seo_issues: "missing title" }),
+    ];
+    const q = parseQuery("what are the specific pages", VOCAB);
+    const out = qaPagesAnswer(q, rows);
+    expect(out).toContain("/bad");           // the flagged page is listed
+    expect(out).toContain("not indexed");    // with its status flags
+    expect(out).not.toContain("QA Audit ·"); // NOT the aggregate summary
+    // flagged page should appear before clean ones
+    expect(out.indexOf("/bad")).toBeLessThan(out.indexOf("/clean1"));
+  });
+
   it("returns a per-URL detail card", () => {
     const rows: QaPageRow[] = [mkPage({ url: "/ar/about", title: "About Us", seo_issues: "missing meta" })];
     const q = parseQuery("details for /ar/about", VOCAB);
