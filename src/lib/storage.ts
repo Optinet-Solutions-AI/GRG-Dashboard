@@ -1,19 +1,17 @@
 import "server-only";
 import { createClient } from "@supabase/supabase-js";
 
-/** Batch-create short-lived signed URLs for private screenshots (service-role; server-only). */
+/**
+ * Map screenshot paths to public URLs. The `screenshots` bucket is public
+ * (migration 0015) so this needs NO service-role key — display works on any
+ * deployment regardless of which env vars are set. Kept async + same shape so
+ * existing call sites are unchanged.
+ */
 export async function signScreenshots(paths: (string | null | undefined)[]): Promise<Map<string, string>> {
-  const real = [...new Set(paths.filter((p): p is string => !!p))];
+  const base = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").replace(/\/$/, "");
   const out = new Map<string, string>();
-  if (real.length === 0) return out;
-  const admin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { persistSession: false } },
-  );
-  const { data } = await admin.storage.from("screenshots").createSignedUrls(real, 3600);
-  for (const item of data ?? []) {
-    if (item.signedUrl && item.path) out.set(item.path, item.signedUrl);
+  for (const p of new Set(paths.filter((p): p is string => !!p))) {
+    out.set(p, `${base}/storage/v1/object/public/screenshots/${p.split("/").map(encodeURIComponent).join("/")}`);
   }
   return out;
 }

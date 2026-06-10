@@ -12,6 +12,15 @@ function toScore(raw: FormDataEntryValue | null): number | null {
   return Number.isInteger(n) && n >= 0 && n <= 100 ? n : null;
 }
 
+/** Delete a single PageSpeed record (admin). RLS allows delete only for admins. */
+export async function deletePagespeedEntry(id: string, _formData: FormData) {
+  await requireAdmin();
+  if (!id) return;
+  const supabase = await createServerSupabaseClient();
+  await supabase.from("pagespeed_entries").delete().eq("id", id);
+  revalidatePath("/pagespeed");
+}
+
 export async function addPagespeedPeriod(_prev: { error?: string } | undefined, formData: FormData) {
   await requireAdmin();
   const date = String(formData.get("date") ?? "").trim();

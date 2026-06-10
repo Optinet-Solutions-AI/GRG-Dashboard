@@ -4,6 +4,7 @@ import { getCurrentRole, isAdminRole } from "@/lib/auth";
 import { addPagespeedPeriod } from "./actions";
 import { AddPagespeedPeriod } from "@/components/entry/AddPagespeedPeriod";
 import { PsiAutofillButton } from "@/components/sources/PsiAutofillButton";
+import { DeleteEntryButton } from "@/components/pagespeed/DeleteEntryButton";
 
 // PSI runs Lighthouse for mobile + desktop (~30-60s); give the serverless function room.
 export const maxDuration = 60;
@@ -112,9 +113,12 @@ export default async function PageSpeedPage({ searchParams }: { searchParams: Pr
       {entry}
       {rows.map((r) => (
         <div key={r.id} className="rounded-xl border border-slate-200 bg-white p-4">
-          <div className="mb-3 flex items-center justify-between">
+          <div className="mb-3 flex items-center justify-between gap-3">
             <a href={r.pagespeed_urls.url} target="_blank" rel="noreferrer" className="font-semibold text-slate-900 hover:underline">{r.pagespeed_urls.url}</a>
-            <span className="text-xs text-slate-500">{r.date}</span>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-slate-500">{r.date}</span>
+              {isAdmin ? <DeleteEntryButton id={r.id} /> : null}
+            </div>
           </div>
           <div className="grid gap-6 md:grid-cols-2">
             <DeviceReport label="Mobile" perf={r.mobile_score} a11y={r.mobile_accessibility} bp={r.mobile_best_practices} seo={r.mobile_seo} />
