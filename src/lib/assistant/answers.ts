@@ -24,7 +24,14 @@ function capList(head: string, items: string[]): string {
 }
 
 const truthy = (v: string | null | undefined) => !!v && v.trim() !== "" && v.trim() !== "—";
-const isIndexed = (v: string | null) => /done|yes|indexed|true/i.test(v ?? "");
+// Treat as indexed only on an affirmative value. Crucially, "Not indexed" contains
+// the substring "indexed" — so check for negative markers FIRST.
+const isIndexed = (v: string | null) => {
+  const s = (v ?? "").trim().toLowerCase();
+  if (!s || s === "—") return false;
+  if (/\b(no|not|none|false|pending|missing|excluded)\b/.test(s)) return false;
+  return /\b(done|yes|indexed|index|true|ok|live)\b/.test(s);
+};
 
 // ───────────────────────── ranking ─────────────────────────
 export function rankingAnswer(q: ParsedQuery, latest: string | null, prev: string | null, all: GridRow[]): string {
