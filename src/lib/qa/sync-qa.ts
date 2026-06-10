@@ -27,17 +27,21 @@ export async function syncQaFromSheet(siteId: string, client?: AnyDB): Promise<{
   const pageRows = parsePageAuditCsv(pageCsv);
   const siteRows = parseSiteAuditCsv(siteCsv);
 
+  // Per-page audit: always full refresh
   await db.from("qa_page_audit").delete().eq("site_id", siteId);
   if (pageRows.length) {
     const { error } = await db.from("qa_page_audit").insert(pageRows.map((r) => ({ ...r, site_id: siteId })));
     if (error) throw new Error(`qa_page_audit insert: ${error.message}`);
   }
 
-  await db.from("qa_site_audit").delete().eq("site_id", siteId);
-  if (siteRows.length) {
+  // Whole-site audit: only insert on first sync — preserve manual checklist state on subsequent syncs
+  const { data: existing } = await db.from("qa_site_audit").select("id").eq("site_id", siteId).maybeSingle();
+  let siteRowsWritten = 0;
+  if (!existing && siteRows.length) {
     const { error } = await db.from("qa_site_audit").insert(siteRows.map((r) => ({ ...r, site_id: siteId })));
     if (error) throw new Error(`qa_site_audit insert: ${error.message}`);
+    siteRowsWritten = siteRows.length;
   }
 
-  return { pages: pageRows.length, siteRows: siteRows.length };
+  return { pages: pageRows.length, siteRows: siteRowsWritten };
 }
