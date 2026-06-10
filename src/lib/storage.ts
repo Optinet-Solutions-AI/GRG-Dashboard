@@ -4,8 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 /**
  * Map screenshot paths to public URLs. The `screenshots` bucket is public
  * (migration 0015) so this needs NO service-role key — display works on any
- * deployment regardless of which env vars are set. Kept async + same shape so
- * existing call sites are unchanged.
+ * deployment regardless of which env vars are set.
  */
 export async function signScreenshots(paths: (string | null | undefined)[]): Promise<Map<string, string>> {
   const base = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").replace(/\/$/, "");
@@ -16,15 +15,26 @@ export async function signScreenshots(paths: (string | null | undefined)[]): Pro
   return out;
 }
 
-/** Upload a screenshot File (from a form) to the private bucket; returns the stored path. Server-only. */
-export async function uploadScreenshot(path: string, file: File): Promise<string> {
+// Minimal interface accepted for both session and service-role clients.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type StorageClient = { storage: { from(bucket: string): any } };
+
+/**
+ * Upload a screenshot File to the screenshots bucket.
+ *
+ * Pass `client` (from createServerSupabaseClient) when calling from a server
+ * action — the admin's own RLS identity performs the upload; no service-role
+ * key needed in Vercel. Omit only when calling from scripts/Cloud Run (where
+ * there is no user session and the service-role key IS available).
+ */
+export async function uploadScreenshot(path: string, file: File, client?: StorageClient): Promise<string> {
   const buf = Buffer.from(await file.arrayBuffer());
-  const admin = createClient(
+  const sc: StorageClient = client ?? createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
     { auth: { persistSession: false } },
   );
-  const { error } = await admin.storage.from("screenshots").upload(path, buf, {
+  const { error } = await sc.storage.from("screenshots").upload(path, buf, {
     contentType: file.type || "image/png",
     upsert: true,
   });
@@ -32,7 +42,7 @@ export async function uploadScreenshot(path: string, file: File): Promise<string
   return path;
 }
 
-/** Upload a raw image Buffer (e.g. a PSI page screenshot) to the private bucket; returns the path. Server-only. */
+/** Upload a raw Buffer (Cloud Run / local scripts only — no user session). Server-only. */
 export async function uploadImageBuffer(path: string, buffer: Buffer, contentType: string): Promise<string> {
   const admin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,

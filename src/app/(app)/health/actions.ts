@@ -22,7 +22,8 @@ export async function updateHealthNumbers(id: string, _prev: { error?: string } 
   if (shot instanceof File && shot.size > 0) {
     const ext = (shot.type === "image/png" ? "png" : shot.type === "image/jpeg" ? "jpg" : "png");
     try {
-      patch.screenshot_path = await uploadScreenshot(`health/${id}.${ext}`, shot);
+      const supabaseForShot = await createServerSupabaseClient();
+      patch.screenshot_path = await uploadScreenshot(`health/${id}.${ext}`, shot, supabaseForShot);
     } catch (e) {
       return { error: e instanceof Error ? e.message : "Image upload failed." };
     }
@@ -61,7 +62,7 @@ export async function addHealthPeriod(siteId: string, _prev: { error?: string } 
   if (shot instanceof File && shot.size > 0) {
     const ext = shot.type === "image/jpeg" ? "jpg" : "png";
     try {
-      const path = await uploadScreenshot(`health/${data.id}.${ext}`, shot);
+      const path = await uploadScreenshot(`health/${data.id}.${ext}`, shot, supabase);
       await supabase.from("health_snapshots").update({ screenshot_path: path }).eq("id", data.id);
     } catch (e) {
       return { error: e instanceof Error ? e.message : "Image upload failed." };

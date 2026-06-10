@@ -42,8 +42,8 @@ export async function addPagespeedPeriod(_prev: { error?: string } | undefined, 
 
       const mShot = formData.get(`mobileShot__${id}`);
       const dShot = formData.get(`desktopShot__${id}`);
-      if (mShot instanceof File && mShot.size > 0) patch.mobile_screenshot_path = await uploadScreenshot(`pagespeed/${host}/${date}-mobile.png`, mShot);
-      if (dShot instanceof File && dShot.size > 0) patch.desktop_screenshot_path = await uploadScreenshot(`pagespeed/${host}/${date}-desktop.png`, dShot);
+      if (mShot instanceof File && mShot.size > 0) patch.mobile_screenshot_path = await uploadScreenshot(`pagespeed/${host}/${date}-mobile.png`, mShot, supabase);
+      if (dShot instanceof File && dShot.size > 0) patch.desktop_screenshot_path = await uploadScreenshot(`pagespeed/${host}/${date}-desktop.png`, dShot, supabase);
 
       const { error } = await supabase.from("pagespeed_entries").insert(patch);
       if (error) return { error: error.message };

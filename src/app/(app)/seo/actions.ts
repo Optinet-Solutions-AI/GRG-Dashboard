@@ -42,7 +42,7 @@ export async function addSeoPeriod(siteId: string, _prev: { error?: string } | u
   if (shot instanceof File && shot.size > 0) {
     const ext = shot.type === "image/jpeg" ? "jpg" : "png";
     try {
-      const path = await uploadScreenshot(`seo/${data.id}.${ext}`, shot);
+      const path = await uploadScreenshot(`seo/${data.id}.${ext}`, shot, supabase);
       await supabase.from("seo_scores").update({ screenshot_path: path }).eq("id", data.id);
     } catch (e) {
       return { error: e instanceof Error ? e.message : "Image upload failed." };
