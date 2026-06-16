@@ -40,10 +40,10 @@ export function RankingGrid({ rows }: { rows: GridRow[] }) {
         <thead>
           <tr>
             <th className="border border-slate-200 bg-slate-50 px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Keyword
+              English
             </th>
             <th className="border border-slate-200 bg-slate-50 px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-              English
+              Keyword
             </th>
             {countries.map((c) => (
               <th key={c} className="border border-slate-200 bg-slate-50 px-3 py-2 text-center text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -55,8 +55,8 @@ export function RankingGrid({ rows }: { rows: GridRow[] }) {
         <tbody>
           {keywords.map((kw) => (
             <tr key={kw} className="even:bg-slate-50/40">
-              <td className="border border-slate-200 px-3 py-1.5 whitespace-nowrap text-slate-800">{kw}</td>
               <td dir="ltr" className="border border-slate-200 px-3 py-1.5 text-left text-xs text-slate-500">{keywordEnglish(kw)}</td>
+              <td className="border border-slate-200 px-3 py-1.5 whitespace-nowrap text-slate-800">{kw}</td>
               {countries.map((c) => {
                 const row = byKey.get(`${kw}|${c}`);
                 return (
