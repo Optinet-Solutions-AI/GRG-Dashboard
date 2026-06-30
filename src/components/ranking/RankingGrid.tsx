@@ -1,6 +1,7 @@
 import { rankCell } from "@/lib/ranking/rank-cell.mjs";
 import { keywordEnglish } from "@/lib/ranking/keyword-labels";
 import type { GridRow } from "@/lib/data/ranking";
+import { formatVolume } from "@/lib/format";
 
 // Friendly market labels shown instead of the raw ISO country code (e.g. AE -> UAE).
 const MARKET_LABELS: Record<string, string> = { AE: "UAE" };
@@ -25,7 +26,15 @@ function Cell({ position, prev }: { position: number | null; prev: number | null
   );
 }
 
-export function RankingGrid({ rows }: { rows: GridRow[] }) {
+export function RankingGrid({
+  rows,
+  globalVolume,
+  marketVolume,
+}: {
+  rows: GridRow[];
+  globalVolume?: Map<string, number>;
+  marketVolume?: Map<string, number>;
+}) {
   if (rows.length === 0) return <p className="text-sm text-slate-500">No ranking data for this week.</p>;
 
   const countries = [...new Map(rows.map((r) => [r.country, r.country_sort])).entries()]
@@ -45,6 +54,9 @@ export function RankingGrid({ rows }: { rows: GridRow[] }) {
             <th className="border border-slate-200 bg-slate-50 px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
               Keyword
             </th>
+            <th className="border border-slate-200 bg-slate-50 px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Volume
+            </th>
             {countries.map((c) => (
               <th key={c} className="border border-slate-200 bg-slate-50 px-3 py-2 text-center text-xs font-semibold uppercase tracking-wide text-slate-500">
                 {marketLabel(c)}
@@ -57,11 +69,15 @@ export function RankingGrid({ rows }: { rows: GridRow[] }) {
             <tr key={kw} className="even:bg-slate-50/40">
               <td dir="ltr" className="border border-slate-200 px-3 py-1.5 text-left text-xs text-slate-500">{keywordEnglish(kw)}</td>
               <td className="border border-slate-200 px-3 py-1.5 whitespace-nowrap text-slate-800">{kw}</td>
+              <td className="border border-slate-200 px-3 py-1.5 text-right tabular-nums text-xs text-slate-600">
+                {formatVolume(globalVolume?.get(kw))}
+              </td>
               {countries.map((c) => {
                 const row = byKey.get(`${kw}|${c}`);
                 return (
                   <td key={c} className="border border-slate-200 px-3 py-1.5 text-center">
                     <Cell position={row?.position ?? null} prev={row?.prev_position ?? null} />
+                    <div className="mt-0.5 text-[11px] tabular-nums text-slate-400">{formatVolume(marketVolume?.get(`${kw}|${c}`))}</div>
                   </td>
                 );
               })}
