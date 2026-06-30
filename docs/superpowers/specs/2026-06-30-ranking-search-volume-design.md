@@ -94,7 +94,7 @@ Matrix of `<input type="number" min="0">`:
 1. Admin-gate (re-check server-side; never trust the client).
 2. Parse with the pure `parseVolumeForm` helper → `{ globals: {keyword_id, volume|null}[], cells: {keyword_id, country_id, volume|null}[] }`.
 3. `keywords` updates: set `global_volume` per keyword.
-4. `keyword_volumes`: `upsert(cells, { onConflict: "keyword_id,country_id" })`; blank/null → delete that row (or upsert null) so cleared cells don't keep stale values.
+4. `keyword_volumes`: split cells into non-null (`upsert(cells, { onConflict: "keyword_id,country_id" })`) and cleared. A **cleared cell deletes** its `(keyword_id, country_id)` row so no stale value remains. (Delete, not upsert-null — keeps the table sparse and read maps clean.)
 5. `revalidatePath("/ranking")` and `revalidatePath("/manage/volumes")`.
 
 **Discoverability:** link to `/manage/volumes` from the manage index (`manage/page.tsx`) and from the ranking page's admin panel.
