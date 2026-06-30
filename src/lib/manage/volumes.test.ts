@@ -23,10 +23,18 @@ describe("parseVolumeForm", () => {
   it("rejects non-numeric and negative values", () => {
     const out = parseVolumeForm(fd({ "g:kw1": "abc", "v:kw1:cAE": "-5" }));
     expect(out.errors.length).toBe(2);
+    expect(out.globals).toEqual([{ keyword_id: "kw1", volume: null }]);
+    expect(out.cells).toEqual([{ keyword_id: "kw1", country_id: "cAE", volume: null }]);
   });
   it("ignores unrelated form fields", () => {
     const out = parseVolumeForm(fd({ other: "x", "g:kw1": "10" }));
     expect(out.globals).toEqual([{ keyword_id: "kw1", volume: 10 }]);
     expect(out.cells).toEqual([]);
+  });
+  it("parses zero as a valid volume", () => {
+    const out = parseVolumeForm(fd({ "g:kw1": "0", "v:kw1:cAE": "0" }));
+    expect(out.errors).toEqual([]);
+    expect(out.globals).toEqual([{ keyword_id: "kw1", volume: 0 }]);
+    expect(out.cells).toEqual([{ keyword_id: "kw1", country_id: "cAE", volume: 0 }]);
   });
 });
