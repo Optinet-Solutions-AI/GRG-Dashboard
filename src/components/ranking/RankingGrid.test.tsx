@@ -9,7 +9,7 @@ const rows: GridRow[] = [
 ];
 
 describe("RankingGrid volumes", () => {
-  it("renders a GSV header, the GSV value, and per-cell SV", () => {
+  it("renders GSV + per-country Rank/SV columns with their values", () => {
     render(
       <RankingGrid
         rows={rows}
@@ -17,8 +17,13 @@ describe("RankingGrid volumes", () => {
         marketVolume={new Map([["استرداد|AE", 8100]])}
       />,
     );
+    // Global column header + value
     expect(screen.getByText("GSV")).toBeTruthy();
     expect(screen.getByText("12,000")).toBeTruthy();
+    // Each country is split into a Rank column and an SV column
+    expect(screen.getByText("Rank")).toBeTruthy();
+    expect(screen.getByText("SV")).toBeTruthy();
+    // Per-country search volume shows in its own cell
     expect(screen.getByText("8,100")).toBeTruthy();
   });
   it("renders em dashes when no volume maps are provided", () => {

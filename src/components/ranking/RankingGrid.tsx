@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import { rankCell } from "@/lib/ranking/rank-cell.mjs";
 import { keywordEnglish } from "@/lib/ranking/keyword-labels";
 import type { GridRow } from "@/lib/data/ranking";
@@ -45,19 +46,31 @@ export function RankingGrid({
       <table className="w-full border-collapse text-sm">
         <thead>
           <tr>
-            <th className="border border-slate-200 bg-slate-50 px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+            <th rowSpan={2} className="border border-slate-200 bg-slate-50 px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
               English
             </th>
-            <th className="border border-slate-200 bg-slate-50 px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+            <th rowSpan={2} className="border border-slate-200 bg-slate-50 px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
               Keyword
             </th>
-            <th title="Global search volume" className="border border-slate-200 bg-slate-50 px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
+            <th rowSpan={2} title="Global search volume" className="border border-slate-200 bg-slate-50 px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
               GSV
             </th>
             {countries.map((c) => (
-              <th key={c} className="border border-slate-200 bg-slate-50 px-3 py-2 text-center text-xs font-semibold uppercase tracking-wide text-slate-500">
+              <th key={c} colSpan={2} className="border border-slate-200 border-l-slate-300 bg-slate-50 px-3 py-2 text-center text-xs font-semibold uppercase tracking-wide text-slate-500">
                 {marketLabel(c)}
               </th>
+            ))}
+          </tr>
+          <tr>
+            {countries.map((c) => (
+              <Fragment key={c}>
+                <th className="border border-slate-200 border-l-slate-300 bg-slate-50 px-2 py-1 text-center text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                  Rank
+                </th>
+                <th title="Search volume" className="border border-slate-200 bg-slate-50 px-2 py-1 text-center text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                  SV
+                </th>
+              </Fragment>
             ))}
           </tr>
         </thead>
@@ -72,10 +85,14 @@ export function RankingGrid({
               {countries.map((c) => {
                 const row = byKey.get(`${kw}|${c}`);
                 return (
-                  <td key={c} className="border border-slate-200 px-3 py-1.5 text-center">
-                    <Cell position={row?.position ?? null} prev={row?.prev_position ?? null} />
-                    <div className="mt-0.5 text-[11px] tabular-nums text-slate-400">{formatVolume(marketVolume?.get(`${kw}|${c}`))}</div>
-                  </td>
+                  <Fragment key={c}>
+                    <td className="border border-slate-200 border-l-slate-300 px-3 py-1.5 text-center">
+                      <Cell position={row?.position ?? null} prev={row?.prev_position ?? null} />
+                    </td>
+                    <td className="border border-slate-200 px-3 py-1.5 text-center tabular-nums text-xs text-slate-500">
+                      {formatVolume(marketVolume?.get(`${kw}|${c}`))}
+                    </td>
+                  </Fragment>
                 );
               })}
             </tr>
