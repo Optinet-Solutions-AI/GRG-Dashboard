@@ -2,10 +2,7 @@ import { rankCell } from "@/lib/ranking/rank-cell.mjs";
 import { keywordEnglish } from "@/lib/ranking/keyword-labels";
 import type { GridRow } from "@/lib/data/ranking";
 import { formatVolume } from "@/lib/format";
-
-// Friendly market labels shown instead of the raw ISO country code (e.g. AE -> UAE).
-const MARKET_LABELS: Record<string, string> = { AE: "UAE" };
-const marketLabel = (code: string) => MARKET_LABELS[code] ?? code;
+import { marketLabel } from "@/lib/market-labels";
 
 function Cell({ position, prev }: { position: number | null; prev: number | null }) {
   const cell = rankCell(position, prev);

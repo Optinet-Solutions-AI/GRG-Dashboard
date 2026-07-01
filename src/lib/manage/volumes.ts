@@ -12,7 +12,12 @@ function coerce(raw: FormDataEntryValue, label: string, errors: string[]): numbe
     errors.push(`${label} must be a whole number ≥ 0`);
     return null;
   }
-  return parseInt(s, 10);
+  const n = parseInt(s, 10);
+  if (n > 2147483647) {
+    errors.push(`${label} is too large`);
+    return null;
+  }
+  return n;
 }
 
 export function parseVolumeForm(formData: FormData): VolumePayload {

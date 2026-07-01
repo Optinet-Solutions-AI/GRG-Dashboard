@@ -37,4 +37,9 @@ describe("parseVolumeForm", () => {
     expect(out.globals).toEqual([{ keyword_id: "kw1", volume: 0 }]);
     expect(out.cells).toEqual([{ keyword_id: "kw1", country_id: "cAE", volume: 0 }]);
   });
+  it("rejects volumes above the postgres integer limit", () => {
+    const out = parseVolumeForm(fd({ "g:kw1": "99999999999" }));
+    expect(out.errors.length).toBe(1);
+    expect(out.globals).toEqual([{ keyword_id: "kw1", volume: null }]);
+  });
 });

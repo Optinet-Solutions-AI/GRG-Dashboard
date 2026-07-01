@@ -1,11 +1,9 @@
 "use client";
 
 import { useActionState } from "react";
+import { marketLabel } from "@/lib/market-labels";
 
 type State = { error?: string; success?: boolean } | undefined;
-
-const MARKET_LABELS: Record<string, string> = { AE: "UAE" };
-const marketLabel = (code: string) => MARKET_LABELS[code] ?? code;
 
 export function VolumeGridEditor({
   keywords, countries, globalPrefill, cellPrefill, action,
