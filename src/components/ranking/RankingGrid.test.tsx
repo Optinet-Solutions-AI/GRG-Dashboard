@@ -9,7 +9,7 @@ const rows: GridRow[] = [
 ];
 
 describe("RankingGrid volumes", () => {
-  it("renders a Volume header, the GSV value, and per-cell SV", () => {
+  it("renders a GSV header, the GSV value, and per-cell SV", () => {
     render(
       <RankingGrid
         rows={rows}
@@ -17,7 +17,7 @@ describe("RankingGrid volumes", () => {
         marketVolume={new Map([["استرداد|AE", 8100]])}
       />,
     );
-    expect(screen.getByText("Volume")).toBeTruthy();
+    expect(screen.getByText("GSV")).toBeTruthy();
     expect(screen.getByText("12,000")).toBeTruthy();
     expect(screen.getByText("8,100")).toBeTruthy();
   });

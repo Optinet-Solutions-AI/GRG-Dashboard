@@ -51,8 +51,8 @@ export function RankingGrid({
             <th className="border border-slate-200 bg-slate-50 px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
               Keyword
             </th>
-            <th className="border border-slate-200 bg-slate-50 px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Volume
+            <th title="Global search volume" className="border border-slate-200 bg-slate-50 px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
+              GSV
             </th>
             {countries.map((c) => (
               <th key={c} className="border border-slate-200 bg-slate-50 px-3 py-2 text-center text-xs font-semibold uppercase tracking-wide text-slate-500">
