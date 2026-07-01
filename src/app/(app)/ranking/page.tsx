@@ -1,5 +1,5 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { getRankingGridByWeek } from "@/lib/data/ranking";
+import { getRankingGridByWeek, getKeywordVolumes } from "@/lib/data/ranking";
 import { RankingGrid } from "@/components/ranking/RankingGrid";
 import { getCurrentRole, isAdminRole } from "@/lib/auth";
 import { addRankingWeek } from "./actions";
@@ -18,6 +18,7 @@ export default async function RankingPage({ searchParams }: { searchParams: Prom
   // Single round-trip for the most recent ~6 months of weeks (was one RPC per week).
   const weekly = await getRankingGridByWeek(selected.id, 26); // newest first
   const weeks = weekly.map((w) => w.week);
+  const volumes = await getKeywordVolumes();
 
   const isAdmin = isAdminRole(await getCurrentRole());
   let entry = null;
@@ -61,6 +62,9 @@ export default async function RankingPage({ searchParams }: { searchParams: Prom
           </p>
           <div className="mt-3 space-y-3">
             <ImportRankings siteId={selected.id} />
+            <a href="/manage/volumes" className="inline-block text-sm font-medium text-slate-700 underline hover:text-slate-900">
+              Edit search volumes (GSV + per-market) →
+            </a>
             {entry}
           </div>
         </details>
@@ -76,7 +80,7 @@ export default async function RankingPage({ searchParams }: { searchParams: Prom
                 <h2 className="text-sm font-semibold text-slate-800">Week of {week}</h2>
                 {i === 0 ? <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">Latest</span> : null}
               </div>
-              <RankingGrid rows={rows} />
+              <RankingGrid rows={rows} globalVolume={volumes.global} marketVolume={volumes.perMarket} />
             </section>
           ))}
         </div>
