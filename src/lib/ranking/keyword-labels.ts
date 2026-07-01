@@ -12,6 +12,8 @@ const KEYWORD_EN: Record<string, string> = {
   "تجميد حساب التداول": "Freezing a trading account",
   "تصفية حساب التداول": "Liquidating a trading account",
   "شكوى ضد شركة تداول": "Complaint against a trading company",
+  "شركة تداول مرخصة": "Licensed trading company",
+  "منصة تداول مرخصة": "Licensed trading platform",
   "علامات نصب التداول": "Signs of a trading scam",
   "عمولة سحب التداول": "Trading withdrawal commission",
   "محامي شركات التداول": "Lawyer for trading companies",
