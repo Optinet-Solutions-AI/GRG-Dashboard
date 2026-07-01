@@ -32,7 +32,6 @@ export const ENTITIES: Record<string, Entity> = {
     slug: "keywords", table: "keywords", label: "Keywords", singular: "Keyword",
     fields: [
       { name: "text", label: "Keyword", type: "text", required: true },
-      { name: "global_volume", label: "Global volume", type: "number" },
       { name: "sort_order", label: "Sort order", type: "number", defaultValue: 0 },
       { name: "active", label: "Active", type: "boolean", defaultValue: true },
     ],

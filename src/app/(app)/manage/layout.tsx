@@ -14,6 +14,9 @@ export default async function ManageLayout({ children }: { children: React.React
               {e.label}
             </Link>
           ))}
+          <Link href="/manage/volumes" className="rounded px-2 py-1 text-slate-700 hover:bg-slate-100">
+            Search Volumes
+          </Link>
         </nav>
       </aside>
       <div className="min-w-0 flex-1">{children}</div>

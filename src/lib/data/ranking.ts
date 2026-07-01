@@ -1,4 +1,6 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { buildVolumeMaps, type KeywordVolumes } from "./volume-maps";
+export type { KeywordVolumes };
 
 export type GridRow = {
   keyword: string;
@@ -41,4 +43,17 @@ export async function getRankingGridByWeek(
   }
   // RPC already orders by week_date desc, so insertion order is newest-first.
   return [...byWeek.entries()].map(([week, rows]) => ({ week, rows }));
+}
+
+/** Current GSV + per-market SV (not week-stamped). Empty maps on error. */
+export async function getKeywordVolumes(): Promise<KeywordVolumes> {
+  const supabase = await createServerSupabaseClient();
+  const [{ data: kws }, { data: vols }] = await Promise.all([
+    supabase.from("keywords").select("text, global_volume"),
+    supabase.from("keyword_volumes").select("volume, keywords(text), countries(code)"),
+  ]);
+  return buildVolumeMaps(
+    (kws ?? []) as { text: string; global_volume: number | null }[],
+    (vols ?? []) as Parameters<typeof buildVolumeMaps>[1],
+  );
 }
