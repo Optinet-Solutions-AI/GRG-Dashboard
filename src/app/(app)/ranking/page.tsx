@@ -50,7 +50,7 @@ export default async function RankingPage({ searchParams }: { searchParams: Prom
         <span className="text-xs text-slate-500">{weeks.length} week{weeks.length === 1 ? "" : "s"} tracked · newest on top</span>
       </div>
       <p className="text-xs text-slate-500">
-        <span className="font-semibold text-green-600">↑</span> improved · <span className="font-semibold text-red-600">↓</span> dropped vs previous week · (n) = previous position · grey = not in top 100.
+        <span className="font-semibold text-emerald-600">↑</span> improved · <span className="font-semibold text-rose-500">↓</span> dropped vs previous week · (n) = previous position · <span className="text-slate-400">Not in top 100</span> = tracked but unranked · muted <span className="text-slate-300">·</span> = not tracked in that market. Keywords are grouped by target market.
         {!site ? " Showing the first site — use the selector in the top bar to change site." : ""}
       </p>
 
