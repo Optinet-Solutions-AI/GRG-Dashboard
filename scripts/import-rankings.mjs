@@ -59,6 +59,15 @@ async function main() {
 
   const site = (await db.from("sites").select("id").eq("domain", siteDomain).single()).data;
   if (!site) throw new Error("site not found: " + siteDomain);
+  // Back-date a "previous" snapshot ONLY on the first-ever import (bootstrap, so movement shows
+  // immediately). Once history exists, write CURRENT week only — last week's import already IS the
+  // previous week, so back-dating would inject a duplicate/off-cadence week between real ones and
+  // break the week-over-week comparison. This makes every future weekly import clean & collision-free.
+  const existing = await db.from("rankings").select("id", { count: "exact", head: true }).eq("site_id", site.id);
+  const hasHistory = (existing.count ?? 0) > 0;
+  console.log(hasHistory
+    ? `Site has ${existing.count} existing ranking rows -> writing CURRENT week (${weekCur}) only.`
+    : `No history -> bootstrapping with previous (${weekPrev}) + current (${weekCur}).`);
   const kws = (await db.from("keywords").select("id, text, sort_order")).data;
   const cts = (await db.from("countries").select("id, code, sort_order")).data;
   const kwMap = new Map(kws.map((k) => [k.text.trim(), k.id]));
@@ -94,25 +103,27 @@ async function main() {
 
   const payload = [];
   const badKw = new Set(), badCc = new Set();
+  let matched = 0;
   for (const r of rows) {
     const kid = kwMap.get(r.keyword), cid = ccMap.get(r.cc);
     if (!kid) { badKw.add(r.keyword); continue; }
     if (!cid) { badCc.add(r.cc); continue; }
-    payload.push({ week_date: weekPrev, site_id: site.id, country_id: cid, keyword_id: kid, position: toPos(r.prev) });
+    matched++;
+    if (!hasHistory) payload.push({ week_date: weekPrev, site_id: site.id, country_id: cid, keyword_id: kid, position: toPos(r.prev) });
     payload.push({ week_date: weekCur, site_id: site.id, country_id: cid, keyword_id: kid, position: toPos(r.cur) });
   }
-  console.log(`Matched ${payload.length / 2} keyword×country pairs | unmatched keywords: ${badKw.size} | unmatched countries: ${badCc.size}`);
+  const nWeeks = hasHistory ? 1 : 2;
+  console.log(`Matched ${matched} keyword×country pairs | unmatched keywords: ${badKw.size} | unmatched countries: ${badCc.size}`);
   if (badKw.size) console.log("  unmatched keyword sample:", [...badKw].slice(0, 8));
   if (badCc.size) console.log("  unmatched countries:", [...badCc]);
 
+  const rankedCur = payload.filter((p) => p.week_date === weekCur && p.position !== null).length;
   if (payload.length && !dryRun) {
     const r = await db.from("rankings").upsert(payload, { onConflict: "week_date,site_id,country_id,keyword_id" }).select("id");
     if (r.error) throw new Error(r.error.message);
-    const rankedCur = payload.filter((p) => p.week_date === weekCur && p.position !== null).length;
-    console.log(`Upserted ${r.data.length} ranking rows across 2 weeks. Current week: ${rankedCur} ranked / ${payload.length / 2 - rankedCur} NR.`);
+    console.log(`Upserted ${r.data.length} ranking rows across ${nWeeks} week(s). Current week: ${rankedCur} ranked / ${matched - rankedCur} NR.`);
   } else if (payload.length && dryRun) {
-    const rankedCur = payload.filter((p) => p.week_date === weekCur && p.position !== null).length;
-    console.log(`Would upsert ${payload.length} ranking rows across 2 weeks. Current week: ${rankedCur} ranked / ${payload.length / 2 - rankedCur} NR.`);
+    console.log(`Would upsert ${payload.length} ranking rows across ${nWeeks} week(s). Current week: ${rankedCur} ranked / ${matched - rankedCur} NR.`);
   }
   console.log(dryRun ? "DONE (dry run — nothing written)" : "DONE");
 }
