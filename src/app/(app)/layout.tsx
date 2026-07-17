@@ -11,7 +11,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <>
       <TopNav userEmail={user?.email ?? ""} isAdmin={isAdminRole(role)} sites={sites ?? []} />
-      <main className="mx-auto max-w-7xl px-3 py-5 sm:px-5 sm:py-6">{children}</main>
+      <main className="mx-auto max-w-[1760px] px-3 py-5 sm:px-6 sm:py-6">{children}</main>
       <AssistantWidget />
     </>
   );
