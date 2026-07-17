@@ -8,7 +8,7 @@ import { marketLabel } from "@/lib/market-labels";
 function Cell({ position, prev }: { position: number | null; prev: number | null }) {
   const cell = rankCell(position, prev);
   if (!cell.ranked) {
-    return <span className="text-xs text-slate-300">—</span>;
+    return <span className="text-xs text-slate-400">Not in top 100</span>;
   }
   return (
     <span className="inline-flex items-baseline gap-1">
