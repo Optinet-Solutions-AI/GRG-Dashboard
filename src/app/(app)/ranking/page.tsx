@@ -65,7 +65,14 @@ export default async function RankingPage({ searchParams }: { searchParams: Prom
             <a href="/manage/volumes" className="inline-block text-sm font-medium text-slate-700 underline hover:text-slate-900">
               Edit search volumes (GSV + per-market) →
             </a>
-            {entry}
+            {entry ? (
+              <div className="space-y-2">
+                <p className="rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-800">
+                  ⚠️ Manual entry — only for typing a week by hand. To load a tracker export, use the <strong>file upload above</strong>. Don&apos;t use this to &ldquo;fix&rdquo; an import: it writes a full grid (every keyword × every market) and adds placeholder rows for keywords the export doesn&apos;t include.
+                </p>
+                {entry}
+              </div>
+            ) : null}
           </div>
         </details>
       ) : null}
