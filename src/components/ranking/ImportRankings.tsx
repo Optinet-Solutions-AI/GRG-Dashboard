@@ -8,11 +8,11 @@ export function ImportRankings({ siteId }: { siteId: string }) {
   return (
     <form action={action} className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white p-3">
       <input type="hidden" name="site_id" value={siteId} />
-      <span className="text-sm font-medium text-slate-700">Import Ahrefs export (CSV):</span>
+      <span className="text-sm font-medium text-slate-700">Import rankings export (CSV or XLSX):</span>
       <input
         type="file"
         name="file"
-        accept=".csv,text/csv,text/plain"
+        accept=".csv,.xlsx,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         required
         className="text-sm file:mr-2 file:rounded-md file:border-0 file:bg-slate-100 file:px-2 file:py-1 file:text-sm"
       />

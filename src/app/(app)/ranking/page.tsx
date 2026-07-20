@@ -58,7 +58,7 @@ export default async function RankingPage({ searchParams }: { searchParams: Prom
         <details className="rounded-xl border border-slate-200 bg-white p-4" open={weeks.length === 0}>
           <summary className="cursor-pointer text-sm font-semibold text-slate-800">Update rankings (admin)</summary>
           <p className="mt-2 text-xs text-slate-500">
-            Import detects the week automatically from the Ahrefs export&apos;s date and adds it as a new snapshot.
+            Accepts an Ahrefs CSV or a multi-domain rank-tracker XLSX. The week is detected from the export&apos;s date and added as a new snapshot; rows are filtered to this site&apos;s domain automatically.
           </p>
           <div className="mt-3 space-y-3">
             <ImportRankings siteId={selected.id} />
