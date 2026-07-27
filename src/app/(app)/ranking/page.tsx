@@ -2,8 +2,6 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { getRankingGridByWeek, getKeywordVolumes } from "@/lib/data/ranking";
 import { RankingGrid } from "@/components/ranking/RankingGrid";
 import { getCurrentRole, isAdminRole } from "@/lib/auth";
-import { addRankingWeek } from "./actions";
-import { AddRankingWeek } from "@/components/entry/AddRankingWeek";
 import { ImportRankings } from "@/components/ranking/ImportRankings";
 
 export default async function RankingPage({ searchParams }: { searchParams: Promise<{ site?: string }> }) {
@@ -21,27 +19,6 @@ export default async function RankingPage({ searchParams }: { searchParams: Prom
   const volumes = await getKeywordVolumes();
 
   const isAdmin = isAdminRole(await getCurrentRole());
-  let entry = null;
-  if (isAdmin && weeks.length) {
-    const [{ data: kws }, { data: ctys }, { data: latest }] = await Promise.all([
-      supabase.from("keywords").select("id, text").order("sort_order"),
-      supabase.from("countries").select("id, code").order("sort_order"),
-      supabase.from("rankings").select("keyword_id, country_id, position").eq("site_id", selected.id).eq("week_date", weeks[0]),
-    ]);
-    const prefill: Record<string, number | null> = {};
-    for (const r of (latest ?? []) as Array<{ keyword_id: string; country_id: string; position: number | null }>) {
-      prefill[`${r.keyword_id}|${r.country_id}`] = r.position;
-    }
-    entry = (
-      <AddRankingWeek
-        keywords={(kws ?? []) as { id: string; text: string }[]}
-        countries={(ctys ?? []) as { id: string; code: string }[]}
-        prefill={prefill}
-        defaultDate={weeks[0]}
-        action={addRankingWeek.bind(null, selected.id)}
-      />
-    );
-  }
 
   return (
     <div className="space-y-4">
@@ -65,14 +42,6 @@ export default async function RankingPage({ searchParams }: { searchParams: Prom
             <a href="/manage/volumes" className="inline-block text-sm font-medium text-slate-700 underline hover:text-slate-900">
               Edit search volumes (GSV + per-market) →
             </a>
-            {entry ? (
-              <div className="space-y-2">
-                <p className="rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-800">
-                  ⚠️ Manual entry — only for typing a week by hand. To load a tracker export, use the <strong>file upload above</strong>. Don&apos;t use this to &ldquo;fix&rdquo; an import: it writes a full grid (every keyword × every market) and adds placeholder rows for keywords the export doesn&apos;t include.
-                </p>
-                {entry}
-              </div>
-            ) : null}
           </div>
         </details>
       ) : null}

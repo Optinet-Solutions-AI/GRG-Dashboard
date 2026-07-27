@@ -96,7 +96,15 @@ export async function importRankings(_prev: Result | undefined, formData: FormDa
     return { error: "No rows matched this site's keywords/countries — is the export for this project?" };
   }
 
-  const { error } = await supabase.from("rankings").upsert(payload, { onConflict: "week_date,site_id,country_id,keyword_id" });
+  // Authoritative-per-week: the uploaded export is the source of truth for the week(s) it writes.
+  // Delete those weeks first, then insert only the export's pairs. This keeps the grid SPARSE
+  // (country-specific keywords stay muted "·" in markets they don't target) and self-heals any
+  // full-grid placeholder rows a stray "Add new week" may have left — so a plain re-upload always
+  // produces a clean week with no manual DB cleanup.
+  const weeksToWrite = [...new Set(payload.map((p) => p.week_date))];
+  const del = await supabase.from("rankings").delete().eq("site_id", siteId).in("week_date", weeksToWrite);
+  if (del.error) return { error: del.error.message };
+  const { error } = await supabase.from("rankings").insert(payload);
   if (error) return { error: error.message };
 
   revalidatePath("/ranking");
