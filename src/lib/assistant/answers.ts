@@ -49,6 +49,7 @@ export function rankingAnswer(q: ParsedQuery, latest: string | null, prev: strin
       let mv = "";
       if (c.position != null && c.prev_position != null) mv = c.position < c.prev_position ? ` (↑ from #${c.prev_position})` : c.position > c.prev_position ? ` (↓ from #${c.prev_position})` : " (no change)";
       else if (c.position != null && c.prev_position == null) mv = " (newly entered)";
+      else if (c.prev_position != null) mv = ` (↓ fell out of top 100, was #${c.prev_position})`;
       return `${cname(c.country)}: ${pos}${mv}`;
     });
     return `🔎 “${q.keyword}” · week ${latest}\n${bullets(lines)}`;
@@ -69,14 +70,21 @@ export function rankingAnswer(q: ParsedQuery, latest: string | null, prev: strin
 
   // direction list
   if (q.direction) {
+    const down = q.direction === "down";
     const moved = rows
-      .filter((r) => r.position != null && r.prev_position != null && (q.direction === "up" ? (r.position as number) < (r.prev_position as number) : (r.position as number) > (r.prev_position as number)))
-      .map((r) => ({ ...r, delta: Math.abs((r.prev_position ?? 0) - (r.position ?? 0)) }))
+      .filter((r) => {
+        if (r.prev_position == null) return false;
+        // Falling out of the top 100 is the biggest drop there is. It used to be excluded
+        // here (position != null), which hid the worst losses from "what dropped?".
+        if (r.position == null) return down;
+        return down ? (r.position as number) > r.prev_position : (r.position as number) < r.prev_position;
+      })
+      .map((r) => ({ ...r, delta: r.position == null ? 101 - (r.prev_position ?? 0) : Math.abs((r.prev_position ?? 0) - r.position) }))
       .sort((a, b) => b.delta - a.delta);
-    const icon = q.direction === "up" ? "⬆" : "⬇";
-    const verb = q.direction === "up" ? "improved" : "dropped";
+    const icon = down ? "⬇" : "⬆";
+    const verb = down ? "dropped" : "improved";
     if (moved.length === 0) return `${icon} No keywords ${verb}${scope} between ${prev ?? "?"} and ${latest}.`;
-    return `${icon} ${moved.length} keyword${moved.length === 1 ? "" : "s"} ${verb}${scope} · ${prev ?? "?"} → ${latest}\n${bullets(moved.slice(0, 8).map((r) => `“${r.keyword}”${tag(r.country)} ${r.prev_position}→${r.position}`))}`;
+    return `${icon} ${moved.length} keyword${moved.length === 1 ? "" : "s"} ${verb}${scope} · ${prev ?? "?"} → ${latest}\n${bullets(moved.slice(0, 8).map((r) => `“${r.keyword}”${tag(r.country)} ${r.prev_position}→${r.position ?? "out of top 100"}`))}`;
   }
 
   // extremes

@@ -9,6 +9,19 @@ const FLAG: Record<string, string> = { AE: "🇦🇪", SA: "🇸🇦", QA: "🇶
 
 function Cell({ position, prev }: { position: number | null; prev: number | null }) {
   const cell = rankCell(position, prev);
+  if (cell.dir === "lost") {
+    // Was ranked last week, gone this week — the worst possible move, so it reads red
+    // and carries the position it fell from. Never-ranked stays muted (below).
+    return (
+      <span
+        title={`Dropped out of the top 100 — was #${cell.prev} last week`}
+        className="inline-flex items-baseline gap-1 rounded bg-rose-50 px-1.5 py-0.5 ring-1 ring-rose-200"
+      >
+        <span className="text-xs font-bold text-rose-700">↓ Lost</span>
+        <span className="tabular-nums text-xs font-semibold text-rose-500">was {cell.prev}</span>
+      </span>
+    );
+  }
   if (!cell.ranked) {
     return <span className="text-xs text-slate-400">Not in top 100</span>;
   }

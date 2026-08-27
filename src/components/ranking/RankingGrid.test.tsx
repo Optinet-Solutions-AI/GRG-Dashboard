@@ -32,3 +32,23 @@ describe("RankingGrid volumes", () => {
     expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(2);
   });
 });
+
+describe("RankingGrid lost rankings", () => {
+  it("flags a keyword that fell out of the top 100 in red with its previous position", () => {
+    const lost: GridRow[] = [
+      { keyword: "استرداد", keyword_sort: 0, country: "AE", country_sort: 0, position: null, prev_position: 4 },
+    ];
+    render(<RankingGrid rows={lost} />);
+    expect(screen.getByText("↓ Lost")).toBeTruthy();
+    expect(screen.getByText("was 4")).toBeTruthy();
+  });
+
+  it("leaves a never-ranked keyword muted with no loss flag", () => {
+    const never: GridRow[] = [
+      { keyword: "استرداد", keyword_sort: 0, country: "AE", country_sort: 0, position: null, prev_position: null },
+    ];
+    render(<RankingGrid rows={never} />);
+    expect(screen.getByText("Not in top 100")).toBeTruthy();
+    expect(screen.queryByText("↓ Lost")).toBeNull();
+  });
+});
