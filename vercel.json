@@ -1,6 +1,15 @@
 {
-  "regions": ["sin1"],
+  "regions": [
+    "sin1"
+  ],
   "crons": [
-    { "path": "/api/cron/backlinks", "schedule": "0 7 * * *" }
+    {
+      "path": "/api/cron/backlinks",
+      "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/cron/ranking",
+      "schedule": "0 6 * * 2"
+    }
   ]
 }
