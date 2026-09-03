@@ -13,8 +13,8 @@ import { pendingPagespeedUrls } from "@/lib/sources/pending-urls";
 // the moment .org and .net were added (3 x ~23s).
 //
 // So an invocation now refreshes a bounded BATCH of URLs concurrently, picking only
-// those with no entry for today. Upserts are keyed on (pagespeed_url_id, date), so
-// calling it again resumes exactly where it left off and never redoes work.
+// those with no entry for today, so calling it again resumes exactly where it left
+// off instead of duplicating a day's captures (?force=1 to capture again anyway).
 //   ?probe=1    report what would run, without spending ~25s per URL
 //   ?batch=N    override how many URLs this invocation handles
 //   ?force=1    ignore today's existing entries and refresh anyway
@@ -70,14 +70,16 @@ export async function GET(request: Request) {
       const m = results.find((r) => r.strategy === "mobile");
       const d = results.find((r) => r.strategy === "desktop");
       if (m?.score == null && d?.score == null) return { url: u.url, written: false };
-      const { error } = await db.from("pagespeed_entries").upsert(
-        {
-          pagespeed_url_id: u.id, date,
-          mobile_score: m?.score ?? null, mobile_accessibility: m?.accessibility ?? null, mobile_best_practices: m?.bestPractices ?? null, mobile_seo: m?.seo ?? null,
-          desktop_score: d?.score ?? null, desktop_accessibility: d?.accessibility ?? null, desktop_best_practices: d?.bestPractices ?? null, desktop_seo: d?.seo ?? null,
-        },
-        { onConflict: "pagespeed_url_id,date" },
-      );
+      // INSERT, not upsert: migration 0016 deliberately dropped the
+      // (pagespeed_url_id, date) unique constraint so each run is its own historical
+      // record. The stale onConflict here failed every write, and the old loop
+      // ignored the error and counted it as updated anyway. The admin form and the
+      // autofill action both insert; this now matches them.
+      const { error } = await db.from("pagespeed_entries").insert({
+        pagespeed_url_id: u.id, date,
+        mobile_score: m?.score ?? null, mobile_accessibility: m?.accessibility ?? null, mobile_best_practices: m?.bestPractices ?? null, mobile_seo: m?.seo ?? null,
+        desktop_score: d?.score ?? null, desktop_accessibility: d?.accessibility ?? null, desktop_best_practices: d?.bestPractices ?? null, desktop_seo: d?.seo ?? null,
+      });
       if (error) throw new Error(`${u.url}: ${error.message}`);
       return { url: u.url, written: true };
     },
