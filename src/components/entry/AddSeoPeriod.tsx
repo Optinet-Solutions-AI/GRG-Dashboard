@@ -27,7 +27,7 @@ export function AddSeoPeriod({
         </label>
         <label className="flex flex-col text-xs text-slate-600">
           SEO Score (/100)
-          <input name="seo_score" type="number" min={0} max={100}
+          <input name="seo_score" type="number" min={0} max={100} step="0.01"
             className="mt-1 rounded-md border border-slate-300 px-2 py-1 text-sm text-slate-900" />
         </label>
         <label className="flex flex-col text-xs text-slate-600">

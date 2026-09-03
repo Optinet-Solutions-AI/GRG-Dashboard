@@ -73,7 +73,14 @@ export async function syncBacklinks(
     const supabase = await createServerSupabaseClient();
     const r = await syncBacklinksFromSheet("gulfrecoverygroup.com", supabase);
     revalidatePath("/backlinks");
-    return { ok: true, message: `Synced ${r.synced} backlinks from the sheet${r.date ? ` (latest ${r.date})` : ""}.` };
+    // Show the per-site split: one sheet feeds several sites, so "179 synced" alone
+    // hides whether the .org links actually landed on .org.
+    const split = Object.entries(r.bySite).filter(([, n]) => n > 0).map(([d, n]) => `${d}: ${n}`).join(", ");
+    const extra = r.unrouted ? ` ${r.unrouted} row(s) had no recognisable target and went to the default site.` : "";
+    return {
+      ok: true,
+      message: `Synced ${r.synced} backlinks from the sheet${r.date ? ` (latest ${r.date})` : ""}.${split ? ` — ${split}.` : ""}${extra}`,
+    };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Sync failed." };
   }

@@ -1,4 +1,5 @@
 import type { Field } from "./entities";
+import { parseIntegerField } from "@/lib/numeric";
 
 type Raw = Record<string, string | undefined>;
 export type BuiltRow = { data: Record<string, string | number | boolean | null>; errors: string[] };
@@ -30,10 +31,10 @@ export function buildRow(fields: Field[], raw: Raw): BuiltRow {
             // which is NOT NULL in the DB) so clearing the field on edit doesn't send null.
             data[field.name] = typeof field.defaultValue === "number" ? field.defaultValue : null;
           }
-        } else if (!/^-?\d+$/.test(trimmed)) {
-          errors.push(`${field.label} must be a number`);
         } else {
-          data[field.name] = parseInt(trimmed, 10);
+          const r = parseIntegerField(trimmed, field.label);
+          if (!r.ok) errors.push(r.error);
+          else data[field.name] = r.value;
         }
         break;
       }

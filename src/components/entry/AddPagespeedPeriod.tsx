@@ -25,8 +25,8 @@ export function AddPagespeedPeriod({ urls, defaultDate, action }: {
             <input type="hidden" name={`host__${u.id}`} value={u.host} />
             <div className="mb-2 text-sm font-medium text-slate-700">{u.url}</div>
             <div className="flex flex-wrap items-end gap-3 text-sm">
-              <label className="flex flex-col">Mobile<input name={`mobile__${u.id}`} defaultValue={u.mobile ?? ""} inputMode="numeric" className="mt-1 w-20 rounded border border-slate-300 px-1.5 py-1 text-center" /></label>
-              <label className="flex flex-col">Desktop<input name={`desktop__${u.id}`} defaultValue={u.desktop ?? ""} inputMode="numeric" className="mt-1 w-20 rounded border border-slate-300 px-1.5 py-1 text-center" /></label>
+              <label className="flex flex-col">Mobile<input name={`mobile__${u.id}`} defaultValue={u.mobile ?? ""} inputMode="decimal" className="mt-1 w-20 rounded border border-slate-300 px-1.5 py-1 text-center" /></label>
+              <label className="flex flex-col">Desktop<input name={`desktop__${u.id}`} defaultValue={u.desktop ?? ""} inputMode="decimal" className="mt-1 w-20 rounded border border-slate-300 px-1.5 py-1 text-center" /></label>
               <ScreenshotInput name={`mobileShot__${u.id}`} label="Mobile report" />
               <ScreenshotInput name={`desktopShot__${u.id}`} label="Desktop report" />
             </div>

@@ -4,12 +4,13 @@ import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { uploadScreenshot } from "@/lib/storage";
+import { parseDecimalField } from "@/lib/numeric";
 
+// Lighthouse scores are percentages stored as numeric(5,2), so 87.5 is valid.
+// Unparseable / out-of-range still degrades to null, as it did before.
 function toScore(raw: FormDataEntryValue | null): number | null {
-  const s = String(raw ?? "").trim();
-  if (s === "") return null;
-  const n = parseInt(s, 10);
-  return Number.isInteger(n) && n >= 0 && n <= 100 ? n : null;
+  const r = parseDecimalField(raw, "Score", { min: 0, max: 100 });
+  return r.ok ? r.value : null;
 }
 
 /** Delete a single PageSpeed record (admin). RLS allows delete only for admins. */

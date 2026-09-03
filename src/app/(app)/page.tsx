@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getOverview, getTop10Trend } from "@/lib/data/overview";
 import { StatCard } from "@/components/StatCard";
 import { TrendChart } from "@/components/charts/TrendChart";
@@ -62,7 +63,16 @@ export default async function OverviewPage({ searchParams }: { searchParams: Pro
               const s = r.sites as { display_name?: string } | null;
               return (
                 <tr key={i} className="border-t border-slate-100">
-                  <td className="py-1.5">{s?.display_name ?? "—"}</td>
+                  <td className="py-1.5">
+                    {/* Same ?site= scoping the top-bar selector uses, so clicking a
+                        row filters the whole dashboard to that site. */}
+                    <Link
+                      href={`/?site=${r.site_id}`}
+                      className="font-medium text-sky-700 underline decoration-sky-300 underline-offset-2 hover:text-sky-900 hover:decoration-sky-500"
+                    >
+                      {s?.display_name ?? "—"}
+                    </Link>
+                  </td>
                   <td className="py-1.5 font-medium text-slate-800">{String(r.seo_score ?? "—")}</td>
                   <td className="py-1.5 text-green-700">{String(r.passed_tests ?? "—")}</td>
                   <td className="py-1.5 text-amber-700">{String(r.warnings ?? "—")}</td>

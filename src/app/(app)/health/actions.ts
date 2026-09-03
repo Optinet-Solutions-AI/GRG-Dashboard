@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { uploadScreenshot } from "@/lib/storage";
+import { parseIntegerField } from "@/lib/numeric";
 
 const FIELDS = ["domain_rating", "referring_domains", "total_visitors", "organic_traffic", "organic_keywords"] as const;
 
@@ -12,11 +13,11 @@ export async function updateHealthNumbers(id: string, _prev: { error?: string } 
   if (!id) return { error: "Missing id." };
   const patch: Record<string, number | null | string> = {};
   for (const f of FIELDS) {
-    const raw = String(formData.get(f) ?? "").trim();
-    if (raw === "") { patch[f] = null; continue; }
-    const n = Number(raw);
-    if (Number.isNaN(n)) return { error: `${f} must be a number` };
-    patch[f] = n;
+    // These are counts / ratings (integer & bigint columns) — Number() used to accept
+    // 12.7 here and let Postgres round it on insert. Reject it instead.
+    const r = parseIntegerField(formData.get(f), f, { min: 0 });
+    if (!r.ok) return { error: r.error };
+    patch[f] = r.value;
   }
   const shot = formData.get("screenshot");
   if (shot instanceof File && shot.size > 0) {
@@ -43,11 +44,9 @@ export async function addHealthPeriod(siteId: string, _prev: { error?: string } 
 
   const record: Record<string, number | null | string> = { site_id: siteId, date };
   for (const f of FIELDS) {
-    const raw = String(formData.get(f) ?? "").trim();
-    if (raw === "") { record[f] = null; continue; }
-    const n = Number(raw);
-    if (Number.isNaN(n)) return { error: `${f} must be a number` };
-    record[f] = n;
+    const r = parseIntegerField(formData.get(f), f, { min: 0 });
+    if (!r.ok) return { error: r.error };
+    record[f] = r.value;
   }
 
   const supabase = await createServerSupabaseClient();
