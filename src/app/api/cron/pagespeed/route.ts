@@ -20,8 +20,13 @@ import { pendingPagespeedUrls } from "@/lib/sources/pending-urls";
 //   ?force=1    ignore today's existing entries and refresh anyway
 export const maxDuration = 60;
 
-const DEFAULT_BATCH = 2;
-const SOFT_DEADLINE_MS = 40_000;
+// Measured against production: a single PSI pass takes ~23s locally but ~50s from
+// the deployment region, leaving only ~10s of headroom under maxDuration. So the
+// default batch is ONE url per invocation; a batch of 2 measured 46.5s and did time
+// out on a colder run. Raising maxDuration (needs a Vercel plan above 60s) is the
+// only way to widen this meaningfully.
+const DEFAULT_BATCH = 1;
+const SOFT_DEADLINE_MS = 25_000;
 
 function todayLocal(): string {
   const d = new Date();
