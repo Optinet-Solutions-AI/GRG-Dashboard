@@ -1,4 +1,5 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { resolveSiteId } from "@/lib/sites";
 import { getCurrentRole, isAdminRole } from "@/lib/auth";
 import { signScreenshots } from "@/lib/storage";
 import { updateHealthPeriod, addHealthPeriod, deleteHealthPeriod } from "./actions";
@@ -20,7 +21,8 @@ export default async function HealthPage({ searchParams }: { searchParams: Promi
   const isAdmin = isAdminRole(await getCurrentRole());
 
   const { data: siteList } = await supabase.from("sites").select("id, display_name").order("sort_order");
-  const selectedSite = (siteList ?? []).find((s) => s.id === site) ?? (siteList ?? [])[0];
+  const siteId = resolveSiteId(siteList, site);
+  const selectedSite = (siteList ?? []).find((s) => s.id === siteId);
   const today = new Date();
   const defaultDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
 
@@ -28,7 +30,7 @@ export default async function HealthPage({ searchParams }: { searchParams: Promi
     .from("health_snapshots")
     .select("id, date, domain_rating, referring_domains, total_visitors, organic_traffic, organic_keywords, screenshot_path, site_id, sites!inner(display_name, sort_order)")
     .order("date", { ascending: false });
-  if (site) q = q.eq("site_id", site);
+  if (siteId) q = q.eq("site_id", siteId);
   const { data } = await q;
   const rows = (data ?? []) as unknown as Array<Record<string, unknown> & { id: string; date: string; screenshot_path: string | null; sites: { display_name: string } }>;
 

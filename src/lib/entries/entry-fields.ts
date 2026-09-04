@@ -37,13 +37,17 @@ export function parseIsoDate(raw: unknown, label: string): DateResult {
 }
 
 const SCORE = { kind: "decimal", min: 0, max: 100 } as const;
+// Tallies and Ahrefs metrics are decimal too: every column they write is
+// numeric(_,2), and an integer-only input made the browser refuse "3.5" with
+// "the two nearest valid values are 3 and 4" before the form was ever submitted.
+const COUNT = { kind: "decimal", min: 0 } as const;
 
 export const SEO_FIELDS: FieldSpec[] = [
   { name: "date", label: "Date", kind: "date" },
   { name: "seo_score", label: "SEO score", ...SCORE },
-  { name: "passed_tests", label: "Passed", kind: "integer", min: 0 },
-  { name: "warnings", label: "Warnings", kind: "integer", min: 0 },
-  { name: "failed_tests", label: "Failed", kind: "integer", min: 0 },
+  { name: "passed_tests", label: "Passed", ...COUNT },
+  { name: "warnings", label: "Warnings", ...COUNT },
+  { name: "failed_tests", label: "Failed", ...COUNT },
 ];
 
 export const PAGESPEED_FIELDS: FieldSpec[] = [
@@ -58,16 +62,15 @@ export const PAGESPEED_FIELDS: FieldSpec[] = [
   { name: "desktop_seo", label: "Desktop SEO", ...SCORE },
 ];
 
-// Counts and ratings, not percentages — deliberately whole numbers. `date` is
-// included here on purpose: updateHealthNumbers used to omit it, which is exactly
-// why the date wasn't editable.
+// Ahrefs figures. `date` is included here on purpose: updateHealthNumbers used to
+// omit it, which is exactly why the date wasn't editable.
 export const HEALTH_FIELDS: FieldSpec[] = [
   { name: "date", label: "Date", kind: "date" },
-  { name: "domain_rating", label: "Domain Rating", kind: "integer", min: 0 },
-  { name: "referring_domains", label: "Referring Domains", kind: "integer", min: 0 },
-  { name: "total_visitors", label: "Total Visitors", kind: "integer", min: 0 },
-  { name: "organic_traffic", label: "Organic Traffic", kind: "integer", min: 0 },
-  { name: "organic_keywords", label: "Organic Keywords", kind: "integer", min: 0 },
+  { name: "domain_rating", label: "Domain Rating", ...COUNT },
+  { name: "referring_domains", label: "Referring Domains", ...COUNT },
+  { name: "total_visitors", label: "Total Visitors", ...COUNT },
+  { name: "organic_traffic", label: "Organic Traffic", ...COUNT },
+  { name: "organic_keywords", label: "Organic Keywords", ...COUNT },
 ];
 
 export function buildEntryRecord(specs: FieldSpec[], get: (name: string) => string | null): BuildResult {

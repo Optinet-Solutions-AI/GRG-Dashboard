@@ -16,7 +16,9 @@ describe("TopNav", () => {
     expect(screen.getByText(BRAND.name)).toBeInTheDocument();
     expect(screen.getByText("a@x.com")).toBeInTheDocument();
     expect(screen.getByLabelText(/site/i)).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "All sites" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Site One" })).toBeInTheDocument();
+    // The dashboard is always scoped to one site — there is no aggregate option.
+    expect(screen.queryByRole("option", { name: "All sites" })).not.toBeInTheDocument();
     for (const label of ["Overview", "SEO", "Ranking", "Analytics", "Manage"]) {
       expect(screen.getByRole("link", { name: label })).toBeInTheDocument();
     }

@@ -36,7 +36,7 @@ export function AddHealthPeriod({
         {METRICS.map(([key, label]) => (
           <label key={key} className="flex flex-col text-xs text-slate-600">
             {label}
-            <input name={key} type="number"
+            <input name={key} type="number" min={0} step="0.01"
               className="mt-1 rounded-md border border-slate-300 px-2 py-1 text-sm text-slate-900" />
           </label>
         ))}

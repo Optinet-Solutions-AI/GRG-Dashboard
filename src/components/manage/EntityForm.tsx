@@ -58,6 +58,9 @@ export function EntityForm({
             <input
               name={f.name}
               type={f.type === "number" ? "number" : "text"}
+              // numeric(_,2) columns: without a step the browser rejects "1.5"
+              // outright ("the two nearest valid values are 1 and 2").
+              step={f.type === "number" ? "0.01" : undefined}
               required={f.required}
               defaultValue={val === undefined ? (f.defaultValue as string | number | undefined) ?? "" : String(val ?? "")}
               className="rounded-md border border-slate-300 px-2 py-1.5"

@@ -1,4 +1,5 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { resolveSiteId } from "@/lib/sites";
 import { getCurrentRole, isAdminRole } from "@/lib/auth";
 import { StatCard } from "@/components/StatCard";
 import { SyncBacklinksButton } from "@/components/sections/SyncBacklinksButton";
@@ -30,13 +31,15 @@ export default async function BacklinksPage({ searchParams }: { searchParams: Pr
   const { site } = await searchParams;
   const supabase = await createServerSupabaseClient();
   const isAdmin = isAdminRole(await getCurrentRole());
+  const { data: siteList } = await supabase.from("sites").select("id").order("sort_order");
+  const siteId = resolveSiteId(siteList, site);
 
   let q = supabase
     .from("backlinks")
     .select("id, date, source_site, source_url, anchor_text, target_url, indexed, status, remarks, sites!inner(display_name)")
     .order("date", { ascending: false })
     .limit(1000);
-  if (site) q = q.eq("site_id", site);
+  if (siteId) q = q.eq("site_id", siteId);
   const { data } = await q;
   const rows = (data ?? []) as unknown as Row[];
 

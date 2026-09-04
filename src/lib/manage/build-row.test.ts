@@ -29,13 +29,17 @@ describe("buildRow", () => {
   });
   it("rejects a non-numeric number field", () => {
     const { errors } = buildRow(fields, { domain: "x", site_id: "s", global_volume: "abc" });
-    expect(errors).toContain("Vol must be a whole number");
+    expect(errors).toContain("Vol must be a number");
   });
-  it("rejects a decimal in a whole-number field instead of truncating it", () => {
-    // Search volume is a count: 1500.7 is not a valid value, and parseInt used to
-    // store 1500 for it without complaint.
+  it("keeps a decimal in a number field instead of rejecting or truncating it", () => {
+    // Every numeric column the manage forms write is numeric(_,2), so 1500.7 is a
+    // valid value. parseInt used to store 1500; parseIntegerField used to error.
     const { errors, data } = buildRow(fields, { domain: "x", site_id: "s", global_volume: "1500.7" });
-    expect(errors).toContain("Vol must be a whole number");
-    expect(data.global_volume).toBeUndefined();
+    expect(errors).toEqual([]);
+    expect(data.global_volume).toBe(1500.7);
+  });
+  it("rounds to the 2 decimal places the columns hold", () => {
+    const { data } = buildRow(fields, { domain: "x", site_id: "s", global_volume: "1500.789" });
+    expect(data.global_volume).toBe(1500.79);
   });
 });

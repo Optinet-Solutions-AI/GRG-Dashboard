@@ -37,11 +37,11 @@ export function VolumeGridEditor({
               <tr key={k.id} className="even:bg-slate-50/40">
                 <td className="border border-slate-200 px-3 py-1.5 whitespace-nowrap text-slate-800">{k.text}</td>
                 <td className="border border-slate-200 px-2 py-1.5 text-right">
-                  <input name={`g:${k.id}`} defaultValue={globalPrefill[k.id] ?? ""} inputMode="numeric" placeholder="—" className={numCell} />
+                  <input name={`g:${k.id}`} defaultValue={globalPrefill[k.id] ?? ""} inputMode="decimal" placeholder="—" className={numCell} />
                 </td>
                 {countries.map((c) => (
                   <td key={c.id} className="border border-slate-200 px-2 py-1.5 text-center">
-                    <input name={`v:${k.id}:${c.id}`} defaultValue={cellPrefill[`${k.id}|${c.id}`] ?? ""} inputMode="numeric" placeholder="—" className={numCell} />
+                    <input name={`v:${k.id}:${c.id}`} defaultValue={cellPrefill[`${k.id}|${c.id}`] ?? ""} inputMode="decimal" placeholder="—" className={numCell} />
                   </td>
                 ))}
               </tr>

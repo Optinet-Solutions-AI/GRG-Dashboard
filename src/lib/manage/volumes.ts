@@ -1,23 +1,27 @@
+import { parseDecimalField } from "@/lib/numeric";
+
 export type VolumePayload = {
   globals: { keyword_id: string; volume: number | null }[];
   cells: { keyword_id: string; country_id: string; volume: number | null }[];
   errors: string[];
 };
 
-// "" -> null; non-negative integer -> number; anything else -> error (returns null + pushes).
+// "" -> null; non-negative number (decimals allowed) -> number; anything else ->
+// error (returns null + pushes). volume is numeric(14,2), so 12000.5 is valid and
+// the ceiling is the column's, not int4's.
+const MAX_VOLUME = 999999999999.99;
+
 function coerce(raw: FormDataEntryValue, label: string, errors: string[]): number | null {
-  const s = String(raw).trim();
-  if (s === "") return null;
-  if (!/^\d+$/.test(s)) {
-    errors.push(`${label} must be a whole number ≥ 0`);
+  const r = parseDecimalField(raw, label, { min: 0 });
+  if (!r.ok) {
+    errors.push(r.error);
     return null;
   }
-  const n = parseInt(s, 10);
-  if (n > 2147483647) {
+  if (r.value != null && r.value > MAX_VOLUME) {
     errors.push(`${label} is too large`);
     return null;
   }
-  return n;
+  return r.value;
 }
 
 export function parseVolumeForm(formData: FormData): VolumePayload {

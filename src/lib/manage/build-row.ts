@@ -1,5 +1,5 @@
 import type { Field } from "./entities";
-import { parseIntegerField } from "@/lib/numeric";
+import { parseDecimalField } from "@/lib/numeric";
 
 type Raw = Record<string, string | undefined>;
 export type BuiltRow = { data: Record<string, string | number | boolean | null>; errors: string[] };
@@ -32,7 +32,9 @@ export function buildRow(fields: Field[], raw: Raw): BuiltRow {
             data[field.name] = typeof field.defaultValue === "number" ? field.defaultValue : null;
           }
         } else {
-          const r = parseIntegerField(trimmed, field.label);
+          // Every numeric column behind these forms is numeric(_,2) (sort_order,
+          // search volume), so decimals are stored as typed instead of rejected.
+          const r = parseDecimalField(trimmed, field.label);
           if (!r.ok) errors.push(r.error);
           else data[field.name] = r.value;
         }

@@ -1,4 +1,5 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { resolveSiteId } from "@/lib/sites";
 import { getCurrentRole, isAdminRole } from "@/lib/auth";
 import { signScreenshots } from "@/lib/storage";
 import { addSeoPeriod, updateSeoPeriod, deleteSeoPeriod } from "./actions";
@@ -30,7 +31,8 @@ export default async function SeoPage({ searchParams }: { searchParams: Promise<
   const isAdmin = isAdminRole(await getCurrentRole());
 
   const { data: siteList } = await supabase.from("sites").select("id, display_name").order("sort_order");
-  const selectedSite = (siteList ?? []).find((s) => s.id === site) ?? (siteList ?? [])[0];
+  const siteId = resolveSiteId(siteList, site);
+  const selectedSite = (siteList ?? []).find((s) => s.id === siteId);
   const today = new Date();
   const defaultDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
 
@@ -38,7 +40,7 @@ export default async function SeoPage({ searchParams }: { searchParams: Promise<
     .from("seo_scores")
     .select("id, date, seo_score, passed_tests, warnings, failed_tests, screenshot_path, site_id, sites!inner(display_name, sort_order)")
     .order("date", { ascending: false });
-  if (site) q = q.eq("site_id", site);
+  if (siteId) q = q.eq("site_id", siteId);
   const { data } = await q;
   const rows = (data ?? []) as unknown as Row[];
 

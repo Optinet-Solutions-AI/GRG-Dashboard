@@ -20,7 +20,7 @@ export function AddBacklinkSummary({ sites, defaultSite, defaultDate, action }: 
         </select>
       </label>
       <label className="flex flex-col">Sub-page URL<input name="sub_url" placeholder="https://…" className="mt-1 w-64 rounded-md border border-slate-300 px-2 py-1.5" /></label>
-      <label className="flex flex-col">No. Backlinks<input name="backlink_count" type="number" defaultValue="0" className="mt-1 w-24 rounded-md border border-slate-300 px-2 py-1.5" /></label>
+      <label className="flex flex-col">No. Backlinks<input name="backlink_count" type="number" min={0} step="0.01" defaultValue="0" className="mt-1 w-24 rounded-md border border-slate-300 px-2 py-1.5" /></label>
       <button type="submit" disabled={pending} className="rounded-md bg-slate-900 px-3 py-1.5 font-medium text-white disabled:opacity-50">{pending ? "Saving…" : "Save"}</button>
       <button type="button" onClick={() => setOpen(false)} className="text-slate-500 hover:underline">Cancel</button>
       {state?.error ? <span className="w-full text-red-600">{state.error}</span> : null}

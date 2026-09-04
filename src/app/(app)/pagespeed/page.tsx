@@ -1,4 +1,5 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { resolveSiteId } from "@/lib/sites";
 import { signScreenshots } from "@/lib/storage";
 import { getCurrentRole, isAdminRole } from "@/lib/auth";
 import { addPagespeedPeriod, updatePagespeedEntry } from "./actions";
@@ -70,11 +71,15 @@ type Row = {
 export default async function PageSpeedPage({ searchParams }: { searchParams: Promise<{ site?: string }> }) {
   const { site } = await searchParams;
   const supabase = await createServerSupabaseClient();
+  const { data: siteList } = await supabase.from("sites").select("id").order("sort_order");
+  // History is scoped to the selected site; the admin entry form below deliberately
+  // still lists every tracked URL, grouped by host, so one visit can log all sites.
+  const siteId = resolveSiteId(siteList, site);
   let q = supabase
     .from("pagespeed_entries")
     .select("id, date, mobile_score, mobile_accessibility, mobile_best_practices, mobile_seo, desktop_score, desktop_accessibility, desktop_best_practices, desktop_seo, mobile_screenshot_path, desktop_screenshot_path, pagespeed_urls!inner(url, site_id, sites!inner(display_name))")
     .order("created_at", { ascending: false });
-  if (site) q = q.eq("pagespeed_urls.site_id", site);
+  if (siteId) q = q.eq("pagespeed_urls.site_id", siteId);
   const { data } = await q;
   const rows = (data ?? []) as unknown as Row[];
 

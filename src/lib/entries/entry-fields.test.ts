@@ -30,13 +30,13 @@ describe("parseIsoDate", () => {
 });
 
 describe("buildEntryRecord", () => {
-  it("builds a full SEO record, keeping a decimal score and whole-number tallies", () => {
+  it("builds a full SEO record, keeping decimals in every numeric field", () => {
     const r = buildEntryRecord(SEO_FIELDS, from({
-      date: "2026-09-04", seo_score: "87.5", passed_tests: "42", warnings: "3", failed_tests: "1",
+      date: "2026-09-04", seo_score: "87.5", passed_tests: "42.5", warnings: "3", failed_tests: "1",
     }));
     expect(r).toEqual({
       ok: true,
-      record: { date: "2026-09-04", seo_score: 87.5, passed_tests: 42, warnings: 3, failed_tests: 1 },
+      record: { date: "2026-09-04", seo_score: 87.5, passed_tests: 42.5, warnings: 3, failed_tests: 1 },
     });
   });
 
@@ -51,10 +51,21 @@ describe("buildEntryRecord", () => {
     expect(r.ok).toBe(false);
   });
 
-  it("rejects a decimal in a whole-number field", () => {
+  it("accepts a decimal in a tally field (the columns are numeric, not integer)", () => {
     const r = buildEntryRecord(SEO_FIELDS, from({ date: "2026-09-04", warnings: "3.5" }));
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.record.warnings).toBe(3.5);
+  });
+
+  it("still rejects a negative tally", () => {
+    const r = buildEntryRecord(SEO_FIELDS, from({ date: "2026-09-04", warnings: "-1" }));
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.error).toBe("Warnings must be a whole number");
+  });
+
+  it("still rejects text in a numeric field", () => {
+    const r = buildEntryRecord(SEO_FIELDS, from({ date: "2026-09-04", passed_tests: "abc" }));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toBe("Passed must be a number");
   });
 
   it("enforces the 0-100 range on scores", () => {
@@ -77,10 +88,19 @@ describe("buildEntryRecord", () => {
     if (r.ok) expect(r.record.desktop_seo).toBe(61.5);
   });
 
-  it("keeps health metrics whole, since they are counts not percentages", () => {
-    const r = buildEntryRecord(HEALTH_FIELDS, from({ date: "2026-09-04", domain_rating: "12.5" }));
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.error).toBe("Domain Rating must be a whole number");
+  it("accepts decimals across every health metric", () => {
+    const vals: Record<string, string> = { date: "2026-09-04" };
+    for (const f of HEALTH_FIELDS) if (f.name !== "date") vals[f.name] = "12.5";
+    const r = buildEntryRecord(HEALTH_FIELDS, from(vals));
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.record.domain_rating).toBe(12.5);
+    if (r.ok) expect(r.record.organic_traffic).toBe(12.5);
+  });
+
+  it("has no whole-number-only fields left, so no form can reject a decimal", () => {
+    for (const spec of [...SEO_FIELDS, ...PAGESPEED_FIELDS, ...HEALTH_FIELDS]) {
+      expect(spec.kind === "integer").toBe(false);
+    }
   });
 
   it("includes the date in the health spec, which the old update action omitted", () => {

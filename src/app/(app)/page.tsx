@@ -3,14 +3,16 @@ import { getOverview, getTop10Trend } from "@/lib/data/overview";
 import { StatCard } from "@/components/StatCard";
 import { TrendChart } from "@/components/charts/TrendChart";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { resolveSiteId } from "@/lib/sites";
 
 export default async function OverviewPage({ searchParams }: { searchParams: Promise<{ site?: string }> }) {
   const { site } = await searchParams;
-  const siteId = site ?? null;
-
-  const [overview, trend] = await Promise.all([getOverview(siteId), getTop10Trend(siteId)]);
 
   const supabase = await createServerSupabaseClient();
+  const { data: siteList } = await supabase.from("sites").select("id").order("sort_order");
+  const siteId = resolveSiteId(siteList, site);
+
+  const [overview, trend] = await Promise.all([getOverview(siteId), getTop10Trend(siteId)]);
   let sq = supabase
     .from("seo_scores")
     .select("seo_score, passed_tests, warnings, failed_tests, date, site_id, sites(display_name)")

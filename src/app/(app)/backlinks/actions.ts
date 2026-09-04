@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth";
+import { parseDecimalField } from "@/lib/numeric";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { syncBacklinksFromSheet } from "@/lib/backlinks/sync";
 
@@ -43,8 +44,10 @@ export async function addBacklinkSummary(_prev: { error?: string } | undefined, 
   if (!site_id) return { error: "Pick a site." };
   if (!sub_url) return { error: "Enter a sub-page URL." };
   if (!/^\d{4}-\d{2}-\d{2}$/.test(period_date)) return { error: "Pick a valid period date." };
-  const backlink_count = parseInt(countRaw, 10);
-  if (!Number.isInteger(backlink_count) || backlink_count < 0) return { error: "Count must be a non-negative number." };
+  // backlink_count is numeric(14,2): accept decimals, reject text and negatives.
+  const count = parseDecimalField(countRaw, "Count", { min: 0 });
+  if (!count.ok) return { error: `${count.error}.` };
+  const backlink_count = count.value ?? 0;
   const supabase = await createServerSupabaseClient();
   const { error } = await supabase
     .from("backlink_summary")
