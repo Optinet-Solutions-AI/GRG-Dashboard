@@ -4,52 +4,77 @@ import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { uploadScreenshot } from "@/lib/storage";
-import { parseDecimalField, parseIntegerField } from "@/lib/numeric";
+import { buildEntryRecord, SEO_FIELDS } from "@/lib/entries/entry-fields";
+import { duplicateDateMessage } from "@/lib/entries/errors";
 
-export async function addSeoPeriod(siteId: string, _prev: { error?: string } | undefined, formData: FormData) {
+type State = { error?: string } | undefined;
+
+/** Attach an optional screenshot to a just-written row. */
+async function attachScreenshot(
+  supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>,
+  id: string,
+  shot: FormDataEntryValue | null,
+): Promise<string | null> {
+  if (!(shot instanceof File) || shot.size === 0) return null;
+  const ext = shot.type === "image/jpeg" ? "jpg" : "png";
+  try {
+    const path = await uploadScreenshot(`seo/${id}.${ext}`, shot, supabase);
+    await supabase.from("seo_scores").update({ screenshot_path: path }).eq("id", id);
+    return null;
+  } catch (e) {
+    return e instanceof Error ? e.message : "Image upload failed.";
+  }
+}
+
+export async function addSeoPeriod(siteId: string, _prev: State, formData: FormData): Promise<State> {
   await requireAdmin();
   if (!siteId) return { error: "Missing site." };
-  const date = String(formData.get("date") ?? "").trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { error: "Pick a valid date." };
 
-  // Score is a percentage -> decimals allowed (numeric(5,2)). The test tallies are
-  // counts, so a fraction is rejected outright rather than silently truncated.
-  const score = parseDecimalField(formData.get("seo_score"), "SEO score", { min: 0, max: 100 });
-  if (!score.ok) return { error: score.error };
-  const passed = parseIntegerField(formData.get("passed_tests"), "Passed", { min: 0 });
-  if (!passed.ok) return { error: passed.error };
-  const warnings = parseIntegerField(formData.get("warnings"), "Warnings", { min: 0 });
-  if (!warnings.ok) return { error: warnings.error };
-  const failed = parseIntegerField(formData.get("failed_tests"), "Failed", { min: 0 });
-  if (!failed.ok) return { error: failed.error };
-
-  const record = {
-    site_id: siteId,
-    date,
-    seo_score: score.value,
-    passed_tests: passed.value,
-    warnings: warnings.value,
-    failed_tests: failed.value,
-  };
+  // SEO_FIELDS is shared with updateSeoPeriod, so add and edit validate identically:
+  // score is a decimal percentage, the test tallies are whole counts.
+  const built = buildEntryRecord(SEO_FIELDS, (n) => formData.get(n) as string | null);
+  if (!built.ok) return { error: built.error };
 
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("seo_scores")
-    .upsert(record, { onConflict: "site_id,date" })
+    .upsert({ site_id: siteId, ...built.record }, { onConflict: "site_id,date" })
     .select("id")
     .single();
   if (error) return { error: error.message };
 
-  const shot = formData.get("screenshot");
-  if (shot instanceof File && shot.size > 0) {
-    const ext = shot.type === "image/jpeg" ? "jpg" : "png";
-    try {
-      const path = await uploadScreenshot(`seo/${data.id}.${ext}`, shot, supabase);
-      await supabase.from("seo_scores").update({ screenshot_path: path }).eq("id", data.id);
-    } catch (e) {
-      return { error: e instanceof Error ? e.message : "Image upload failed." };
-    }
-  }
+  const shotErr = await attachScreenshot(supabase, data.id, formData.get("screenshot"));
+  if (shotErr) return { error: shotErr };
+
   revalidatePath("/seo");
   return { error: undefined };
+}
+
+/** Edit an existing SEO entry — its date included. */
+export async function updateSeoPeriod(id: string, _prev: State, formData: FormData): Promise<State> {
+  await requireAdmin();
+  if (!id) return { error: "Missing entry." };
+
+  const built = buildEntryRecord(SEO_FIELDS, (n) => formData.get(n) as string | null);
+  if (!built.ok) return { error: built.error };
+
+  const supabase = await createServerSupabaseClient();
+  const { error } = await supabase.from("seo_scores").update(built.record).eq("id", id);
+  // seo_scores has UNIQUE (site_id, date): moving an entry onto a date this site
+  // already has would otherwise surface as a raw Postgres constraint error.
+  if (error) return { error: duplicateDateMessage(error, "SEO entry") };
+
+  const shotErr = await attachScreenshot(supabase, id, formData.get("screenshot"));
+  if (shotErr) return { error: shotErr };
+
+  revalidatePath("/seo");
+  return { error: undefined };
+}
+
+export async function deleteSeoPeriod(id: string): Promise<void> {
+  await requireAdmin();
+  if (!id) return;
+  const supabase = await createServerSupabaseClient();
+  await supabase.from("seo_scores").delete().eq("id", id);
+  revalidatePath("/seo");
 }

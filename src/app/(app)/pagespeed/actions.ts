@@ -5,6 +5,7 @@ import { requireAdmin } from "@/lib/auth";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { uploadScreenshot } from "@/lib/storage";
 import { parseDecimalField } from "@/lib/numeric";
+import { buildEntryRecord, PAGESPEED_FIELDS } from "@/lib/entries/entry-fields";
 
 // Lighthouse scores are percentages stored as numeric(5,2), so 87.5 is valid.
 // Unparseable / out-of-range still degrades to null, as it did before.
@@ -52,6 +53,30 @@ export async function addPagespeedPeriod(_prev: { error?: string } | undefined, 
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Upload failed." };
   }
+  revalidatePath("/pagespeed");
+  return { error: undefined };
+}
+
+/**
+ * Edit an existing PageSpeed entry — its date and all eight score columns.
+ * pagespeed_entries has no (url, date) unique constraint (migration 0016 dropped it
+ * so each run is its own record), so moving an entry's date can't collide.
+ */
+export async function updatePagespeedEntry(
+  id: string,
+  _prev: { error?: string } | undefined,
+  formData: FormData,
+): Promise<{ error?: string } | undefined> {
+  await requireAdmin();
+  if (!id) return { error: "Missing entry." };
+
+  const built = buildEntryRecord(PAGESPEED_FIELDS, (n) => formData.get(n) as string | null);
+  if (!built.ok) return { error: built.error };
+
+  const supabase = await createServerSupabaseClient();
+  const { error } = await supabase.from("pagespeed_entries").update(built.record).eq("id", id);
+  if (error) return { error: error.message };
+
   revalidatePath("/pagespeed");
   return { error: undefined };
 }

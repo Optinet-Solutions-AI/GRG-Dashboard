@@ -4,69 +4,79 @@ import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { uploadScreenshot } from "@/lib/storage";
-import { parseIntegerField } from "@/lib/numeric";
+import { buildEntryRecord, HEALTH_FIELDS } from "@/lib/entries/entry-fields";
+import { duplicateDateMessage } from "@/lib/entries/errors";
 
-const FIELDS = ["domain_rating", "referring_domains", "total_visitors", "organic_traffic", "organic_keywords"] as const;
+type State = { error?: string } | undefined;
 
-export async function updateHealthNumbers(id: string, _prev: { error?: string } | undefined, formData: FormData) {
+async function screenshotPath(
+  supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>,
+  id: string,
+  shot: FormDataEntryValue | null,
+): Promise<string | null> {
+  if (!(shot instanceof File) || shot.size === 0) return null;
+  const ext = shot.type === "image/jpeg" ? "jpg" : "png";
+  return uploadScreenshot(`health/${id}.${ext}`, shot, supabase);
+}
+
+/**
+ * Edit an existing health snapshot — its date included. This previously validated a
+ * fixed FIELDS list that omitted `date`, which is why the date wasn't editable.
+ */
+export async function updateHealthPeriod(id: string, _prev: State, formData: FormData): Promise<State> {
   await requireAdmin();
-  if (!id) return { error: "Missing id." };
-  const patch: Record<string, number | null | string> = {};
-  for (const f of FIELDS) {
-    // These are counts / ratings (integer & bigint columns) — Number() used to accept
-    // 12.7 here and let Postgres round it on insert. Reject it instead.
-    const r = parseIntegerField(formData.get(f), f, { min: 0 });
-    if (!r.ok) return { error: r.error };
-    patch[f] = r.value;
-  }
-  const shot = formData.get("screenshot");
-  if (shot instanceof File && shot.size > 0) {
-    const ext = (shot.type === "image/png" ? "png" : shot.type === "image/jpeg" ? "jpg" : "png");
-    try {
-      const supabaseForShot = await createServerSupabaseClient();
-      patch.screenshot_path = await uploadScreenshot(`health/${id}.${ext}`, shot, supabaseForShot);
-    } catch (e) {
-      return { error: e instanceof Error ? e.message : "Image upload failed." };
-    }
-  }
+  if (!id) return { error: "Missing entry." };
+
+  const built = buildEntryRecord(HEALTH_FIELDS, (n) => formData.get(n) as string | null);
+  if (!built.ok) return { error: built.error };
+
   const supabase = await createServerSupabaseClient();
+  const patch: Record<string, unknown> = { ...built.record };
+  try {
+    const path = await screenshotPath(supabase, id, formData.get("screenshot"));
+    if (path) patch.screenshot_path = path;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Image upload failed." };
+  }
+
   const { error } = await supabase.from("health_snapshots").update(patch).eq("id", id);
-  if (error) return { error: error.message };
+  // health_snapshots has UNIQUE (site_id, date).
+  if (error) return { error: duplicateDateMessage(error, "health entry") };
+
   revalidatePath("/health");
   return { error: undefined };
 }
 
-export async function addHealthPeriod(siteId: string, _prev: { error?: string } | undefined, formData: FormData) {
+export async function addHealthPeriod(siteId: string, _prev: State, formData: FormData): Promise<State> {
   await requireAdmin();
   if (!siteId) return { error: "Missing site." };
-  const date = String(formData.get("date") ?? "").trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { error: "Pick a valid date." };
 
-  const record: Record<string, number | null | string> = { site_id: siteId, date };
-  for (const f of FIELDS) {
-    const r = parseIntegerField(formData.get(f), f, { min: 0 });
-    if (!r.ok) return { error: r.error };
-    record[f] = r.value;
-  }
+  const built = buildEntryRecord(HEALTH_FIELDS, (n) => formData.get(n) as string | null);
+  if (!built.ok) return { error: built.error };
 
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("health_snapshots")
-    .upsert(record, { onConflict: "site_id,date" })
+    .upsert({ site_id: siteId, ...built.record }, { onConflict: "site_id,date" })
     .select("id")
     .single();
-  if (error) return { error: error.message };
+  if (error) return { error: duplicateDateMessage(error, "health entry") };
 
-  const shot = formData.get("screenshot");
-  if (shot instanceof File && shot.size > 0) {
-    const ext = shot.type === "image/jpeg" ? "jpg" : "png";
-    try {
-      const path = await uploadScreenshot(`health/${data.id}.${ext}`, shot, supabase);
-      await supabase.from("health_snapshots").update({ screenshot_path: path }).eq("id", data.id);
-    } catch (e) {
-      return { error: e instanceof Error ? e.message : "Image upload failed." };
-    }
+  try {
+    const path = await screenshotPath(supabase, data.id, formData.get("screenshot"));
+    if (path) await supabase.from("health_snapshots").update({ screenshot_path: path }).eq("id", data.id);
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Image upload failed." };
   }
+
   revalidatePath("/health");
   return { error: undefined };
+}
+
+export async function deleteHealthPeriod(id: string): Promise<void> {
+  await requireAdmin();
+  if (!id) return;
+  const supabase = await createServerSupabaseClient();
+  await supabase.from("health_snapshots").delete().eq("id", id);
+  revalidatePath("/health");
 }

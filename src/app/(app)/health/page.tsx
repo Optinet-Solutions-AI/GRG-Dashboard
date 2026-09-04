@@ -1,8 +1,9 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { getCurrentRole, isAdminRole } from "@/lib/auth";
 import { signScreenshots } from "@/lib/storage";
-import { updateHealthNumbers, addHealthPeriod } from "./actions";
-import { HealthNumberForm } from "@/components/sections/HealthNumberForm";
+import { updateHealthPeriod, addHealthPeriod, deleteHealthPeriod } from "./actions";
+import { EditEntryForm } from "@/components/entry/EditEntryForm";
+import { HEALTH_FIELDS } from "@/lib/entries/entry-fields";
 import { AddHealthPeriod } from "@/components/sections/AddHealthPeriod";
 
 const METRICS = [
@@ -43,22 +44,30 @@ export default async function HealthPage({ searchParams }: { searchParams: Promi
         <div key={r.id} className="rounded-xl border border-slate-200 bg-white p-4">
           <div className="mb-3 flex items-center justify-between">
             <span className="font-semibold text-slate-900">{r.sites.display_name}</span>
-            <span className="text-xs text-slate-500">{r.date}</span>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-slate-500">{r.date}</span>
+              {isAdmin ? (
+                <EditEntryForm
+                  fields={HEALTH_FIELDS}
+                  initial={r}
+                  action={updateHealthPeriod.bind(null, r.id)}
+                  deleteAction={deleteHealthPeriod.bind(null, r.id)}
+                  screenshotLabel="Replace Ahrefs screenshot (optional)"
+                />
+              ) : null}
+            </div>
           </div>
           <div className="grid gap-4 md:grid-cols-2">
             <div>
-              {isAdmin ? (
-                <HealthNumberForm id={r.id} initial={r} action={updateHealthNumbers.bind(null, r.id)} />
-              ) : (
-                <dl className="grid grid-cols-2 gap-2 text-sm">
+              {/* Read-only for everyone; admins edit via the Edit button in the header. */}
+              <dl className="grid grid-cols-2 gap-2 text-sm">
                   {METRICS.map(([key, label]) => (
                     <div key={key} className="flex justify-between rounded-md bg-slate-50 px-3 py-2">
                       <dt className="text-slate-500">{label}</dt>
                       <dd className="font-semibold text-slate-800">{(r[key] as number | null) ?? "—"}</dd>
                     </div>
                   ))}
-                </dl>
-              )}
+              </dl>
             </div>
             <div>
               {r.screenshot_path && signed.get(r.screenshot_path) ? (

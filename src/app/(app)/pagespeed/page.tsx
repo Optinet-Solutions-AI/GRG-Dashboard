@@ -1,10 +1,12 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { signScreenshots } from "@/lib/storage";
 import { getCurrentRole, isAdminRole } from "@/lib/auth";
-import { addPagespeedPeriod } from "./actions";
+import { addPagespeedPeriod, updatePagespeedEntry } from "./actions";
 import { AddPagespeedPeriod } from "@/components/entry/AddPagespeedPeriod";
 import { PsiAutofillButton } from "@/components/sources/PsiAutofillButton";
 import { DeleteEntryButton } from "@/components/pagespeed/DeleteEntryButton";
+import { EditEntryForm } from "@/components/entry/EditEntryForm";
+import { PAGESPEED_FIELDS } from "@/lib/entries/entry-fields";
 
 // PSI runs Lighthouse for mobile + desktop (~30-60s); give the serverless function room.
 export const maxDuration = 60;
@@ -117,6 +119,13 @@ export default async function PageSpeedPage({ searchParams }: { searchParams: Pr
             <a href={r.pagespeed_urls.url} target="_blank" rel="noreferrer" className="font-semibold text-slate-900 hover:underline">{r.pagespeed_urls.url}</a>
             <div className="flex items-center gap-3">
               <span className="text-xs text-slate-500">{r.date}</span>
+              {isAdmin ? (
+                <EditEntryForm
+                  fields={PAGESPEED_FIELDS}
+                  initial={r}
+                  action={updatePagespeedEntry.bind(null, r.id)}
+                />
+              ) : null}
               {isAdmin ? <DeleteEntryButton id={r.id} /> : null}
             </div>
           </div>

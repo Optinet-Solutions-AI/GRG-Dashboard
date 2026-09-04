@@ -1,8 +1,10 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { getCurrentRole, isAdminRole } from "@/lib/auth";
 import { signScreenshots } from "@/lib/storage";
-import { addSeoPeriod } from "./actions";
+import { addSeoPeriod, updateSeoPeriod, deleteSeoPeriod } from "./actions";
 import { AddSeoPeriod } from "@/components/entry/AddSeoPeriod";
+import { EditEntryForm } from "@/components/entry/EditEntryForm";
+import { SEO_FIELDS } from "@/lib/entries/entry-fields";
 
 function scoreColor(n: number | null): string {
   if (n == null) return "text-slate-400";
@@ -52,7 +54,18 @@ export default async function SeoPage({ searchParams }: { searchParams: Promise<
         <div key={r.id} className="rounded-xl border border-slate-200 bg-white p-4">
           <div className="mb-3 flex items-center justify-between">
             <span className="font-semibold text-slate-900">{r.sites.display_name}</span>
-            <span className="text-xs text-slate-500">{r.date}</span>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-slate-500">{r.date}</span>
+              {isAdmin ? (
+                <EditEntryForm
+                  fields={SEO_FIELDS}
+                  initial={r}
+                  action={updateSeoPeriod.bind(null, r.id)}
+                  deleteAction={deleteSeoPeriod.bind(null, r.id)}
+                  screenshotLabel="Replace Rankmath screenshot (optional)"
+                />
+              ) : null}
+            </div>
           </div>
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-3">
