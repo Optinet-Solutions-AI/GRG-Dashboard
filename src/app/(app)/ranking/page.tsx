@@ -3,12 +3,14 @@ import { getRankingGridByWeek, getKeywordVolumes } from "@/lib/data/ranking";
 import { RankingGrid } from "@/components/ranking/RankingGrid";
 import { getCurrentRole, isAdminRole } from "@/lib/auth";
 import { ImportRankings } from "@/components/ranking/ImportRankings";
+import { SyncRankings } from "@/components/ranking/SyncRankings";
+import { createBpnClient } from "@/lib/rankings/bpn-client";
 
 export default async function RankingPage({ searchParams }: { searchParams: Promise<{ site?: string }> }) {
   const { site } = await searchParams;
 
   const supabase = await createServerSupabaseClient();
-  const { data: sites } = await supabase.from("sites").select("id, display_name").order("sort_order");
+  const { data: sites } = await supabase.from("sites").select("id, display_name, domain").order("sort_order");
   const siteList = sites ?? [];
   const selected = siteList.find((s) => s.id === site) ?? siteList[0];
   if (!selected) return <p className="text-sm text-slate-500">No sites configured yet.</p>;
@@ -19,6 +21,19 @@ export default async function RankingPage({ searchParams }: { searchParams: Prom
   const volumes = await getKeywordVolumes();
 
   const isAdmin = isAdminRole(await getCurrentRole());
+
+  // Freshness hint for the sync panel. Admin-only and best-effort: if the tracker is
+  // unreachable the page still renders, just without the hint.
+  let lastChecked: string | null = null;
+  if (isAdmin) {
+    try {
+      const registry = await createBpnClient({}).domains();
+      const domain = String(selected.domain ?? "").toLowerCase();
+      lastChecked = registry.find((d) => d.domain.toLowerCase() === domain)?.last_checked ?? null;
+    } catch {
+      lastChecked = null;
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -35,9 +50,10 @@ export default async function RankingPage({ searchParams }: { searchParams: Prom
         <details className="rounded-xl border border-slate-200 bg-white p-4" open={weeks.length === 0}>
           <summary className="cursor-pointer text-sm font-semibold text-slate-800">Update rankings (admin)</summary>
           <p className="mt-2 text-xs text-slate-500">
-            Accepts an Ahrefs CSV or a multi-domain rank-tracker XLSX. The week is detected from the export&apos;s date and added as a new snapshot; rows are filtered to this site&apos;s domain automatically.
+            Rankings sync from the rank tracker automatically. Use the buttons below to pull them in now, or upload an export by hand — it accepts an Ahrefs CSV or a multi-domain rank-tracker XLSX, and the week is detected from the export&apos;s date.
           </p>
           <div className="mt-3 space-y-3">
+            <SyncRankings lastChecked={lastChecked} />
             <ImportRankings siteId={selected.id} />
             <a href="/manage/volumes" className="inline-block text-sm font-medium text-slate-700 underline hover:text-slate-900">
               Edit search volumes (GSV + per-market) →

@@ -9,7 +9,7 @@
     },
     {
       "path": "/api/cron/ranking",
-      "schedule": "0 6 * * 2"
+      "schedule": "0 6 * * *"
     }
   ]
 }

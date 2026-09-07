@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { normalizePosition, isoWeekMonday, buildWeek, sweepVerdict, type BpnRow } from "./bpn-week";
+import { normalizePosition, isoWeekMonday, buildWeek, sweepVerdict, parseCheckedAt, type BpnRow } from "./bpn-week";
 
 const row = (keyword: string, country: string, position: number | null, checked_at: string): BpnRow => ({
   domain: "gulfrecoverygroup.com", keyword, country, language: "ar", position, checked_at,
@@ -108,5 +108,29 @@ describe("sweepVerdict", () => {
     const v = sweepVerdict(build(0, 0), 67);
     expect(v.write).toBe(false);
     expect(v.reason).toMatch(/no checks/i);
+  });
+});
+
+describe("parseCheckedAt (panel timestamps are UTC-4, not UTC)", () => {
+  it("reads a bare timestamp as panel-local, so true UTC is 4h later", () => {
+    // Verified against the API itself: meta.generated_at 2026-09-07T08:37:06Z arrived
+    // alongside a just-written checked_at of "2026-09-07 04:36:21".
+    expect(parseCheckedAt("2026-09-07 04:36:21")).toBe(Date.parse("2026-09-07T08:36:21Z"));
+  });
+
+  it("honours an explicit zone instead of shifting it again", () => {
+    expect(parseCheckedAt("2026-09-01T05:00:00Z")).toBe(Date.parse("2026-09-01T05:00:00Z"));
+  });
+
+  it("puts a Sunday-evening panel check in the week it really belongs to", () => {
+    // Panel "2026-09-06 21:00" is Monday 2026-09-07T01:00Z — the NEXT ISO week.
+    const b = buildWeek([row("kwA", "SA", 3, "2026-09-06 21:00:00")], "2026-08-31");
+    expect(b.checked).toBe(0);
+    expect(buildWeek([row("kwA", "SA", 3, "2026-09-06 21:00:00")], "2026-09-07").checked).toBe(1);
+  });
+
+  it("still counts a check the panel stamps late on the closing Sunday", () => {
+    // Panel "2026-08-30 21:00" is Monday 2026-08-31T01:00Z — inside week 2026-08-31.
+    expect(buildWeek([row("kwA", "SA", 3, "2026-08-30 21:00:00")], "2026-08-31").checked).toBe(1);
   });
 });

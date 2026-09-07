@@ -37,10 +37,19 @@ export function normalizePosition(position: number | null | undefined): number |
   return position > 0 ? position : null;
 }
 
-/** "2026-09-01 05:43:55" is UTC, but Date() would read it as local time. */
-function parseCheckedAt(s: string): number {
+// The API's row timestamps are NOT UTC, despite looking like it. Measured against the
+// same response's `meta.generated_at` (which IS UTC and matches our clock), a row the
+// sweep had just written read 4h earlier:
+//   generated_at 2026-09-07T08:37:06Z  ·  checked_at "2026-09-07 04:36:21"
+// So the panel stamps rows in UTC-4. Reading them as UTC shifted every check 4h forward,
+// which silently moved Sunday-evening checks into the FOLLOWING ISO week.
+const CHECKED_AT_OFFSET_HOURS = -4;
+
+/** "2026-09-01 05:43:55" is panel-local (UTC-4); an explicit zone in the string wins. */
+export function parseCheckedAt(s: string): number {
   const iso = s.includes("T") ? s : s.replace(" ", "T");
-  return Date.parse(/[Zz]|[+-]\d{2}:?\d{2}$/.test(iso) ? iso : `${iso}Z`);
+  if (/[Zz]|[+-]\d{2}:?\d{2}$/.test(iso)) return Date.parse(iso);
+  return Date.parse(`${iso}Z`) - CHECKED_AT_OFFSET_HOURS * 3_600_000;
 }
 
 /** Monday (UTC) of the ISO week containing `date`, as YYYY-MM-DD. */
