@@ -93,3 +93,33 @@ describe("RankingGrid market grouping", () => {
     expect(screen.getAllByTitle("Not tracked in this market").length).toBe(2); // sa-only: QA + AE
   });
 });
+
+describe("RankingGrid movement labels", () => {
+  const cell = (position: number | null, prev: number | null): GridRow[] => [
+    { keyword: "kw", keyword_sort: 0, country: "BH", country_sort: 0, position, prev_position: prev },
+  ];
+
+  it("parenthesises the previous position so a 1-place gain can't read as 33 places", () => {
+    // Live case: BH went #33 -> #32, which rendered as the ambiguous "32 ↑ 33".
+    render(<RankingGrid rows={cell(32, 33)} />);
+    expect(screen.getByText("32")).toBeTruthy();
+    expect(screen.getByText("↑ (33)")).toBeTruthy();
+    expect(screen.getByTitle("Improved to #32 from #33 last week")).toBeTruthy();
+  });
+
+  it("does the same for a drop", () => {
+    render(<RankingGrid rows={cell(40, 12)} />);
+    expect(screen.getByText("↓ (12)")).toBeTruthy();
+    expect(screen.getByTitle("Dropped to #40 from #12 last week")).toBeTruthy();
+  });
+
+  it("shows no movement marker when the position held", () => {
+    render(<RankingGrid rows={cell(7, 7)} />);
+    expect(screen.queryByText(/[↑↓]/)).toBeNull();
+  });
+
+  it("labels a first-time ranking as new", () => {
+    render(<RankingGrid rows={cell(9, null)} />);
+    expect(screen.getByText("↑ new")).toBeTruthy();
+  });
+})

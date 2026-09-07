@@ -25,16 +25,29 @@ function Cell({ position, prev }: { position: number | null; prev: number | null
   if (!cell.ranked) {
     return <span className="text-xs text-slate-400">Not in top 100</span>;
   }
+  // The previous position goes in parentheses, which is what the legend promises and what
+  // rank-cell documents. Bare, "32 ↑ 33" reads as a 33-place jump when it means "now #32,
+  // was #33"; "32 ↑ (33)" can only be read one way. The title spells it out either way.
+  const move =
+    cell.prev == null
+      ? null
+      : cell.dir === "up"
+        ? { cls: "text-emerald-600", glyph: "↑", title: `Improved to #${cell.label} from #${cell.prev} last week` }
+        : { cls: "text-rose-500", glyph: "↓", title: `Dropped to #${cell.label} from #${cell.prev} last week` };
+
   return (
     <span className="inline-flex items-baseline gap-1">
       <span className="tabular-nums font-semibold text-slate-800">{cell.label}</span>
-      {cell.dir === "up" && (
-        <span className="text-xs font-semibold text-emerald-600">↑{cell.prev != null ? ` ${cell.prev}` : ""}</span>
+      {(cell.dir === "up" || cell.dir === "down") && move && (
+        <span title={move.title} className={`text-xs font-semibold ${move.cls}`}>
+          {move.glyph} ({cell.prev})
+        </span>
       )}
-      {cell.dir === "down" && (
-        <span className="text-xs font-semibold text-rose-500">↓{cell.prev != null ? ` ${cell.prev}` : ""}</span>
+      {cell.dir === "new" && (
+        <span title="Ranking for the first time — no position last week" className="text-xs font-semibold text-emerald-600">
+          ↑ new
+        </span>
       )}
-      {cell.dir === "new" && <span className="text-xs font-semibold text-emerald-600">↑ new</span>}
     </span>
   );
 }
