@@ -52,3 +52,44 @@ describe("RankingGrid lost rankings", () => {
     expect(screen.queryByText("↓ Lost")).toBeNull();
   });
 });
+
+describe("RankingGrid market grouping", () => {
+  const MARKETS = ["SA", "QA", "AE"];
+  // Two all-market keywords and one SA-only, with the SA-only sorted BETWEEN them so the
+  // groups interleave in keyword order — the shape that used to repeat group headers.
+  const full = (kw: string, sort: number) =>
+    MARKETS.map((c, i) => ({
+      keyword: kw, keyword_sort: sort, country: c, country_sort: i, position: 5, prev_position: 5,
+    }));
+  const rows: GridRow[] = [
+    ...full("all-one", 0),
+    { keyword: "sa-only", keyword_sort: 1, country: "SA", country_sort: 0, position: 2, prev_position: 2 },
+    ...full("all-two", 2),
+  ];
+
+  it("emits each market group header exactly once even when groups interleave", () => {
+    render(<RankingGrid rows={rows} />);
+    expect(screen.getAllByText(/All markets/).length).toBe(1);
+    expect(screen.getAllByText(/Saudi|SA/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText(/· 2 keywords/)).toBeTruthy();
+  });
+
+  it("keeps a keyword in All markets when a market is merely missing from the week", () => {
+    // "all-two" lost its QA row (a sweep failure), which previously demoted it to
+    // "Selected markets" and split the All-markets block in two.
+    const holed = rows.filter((r) => !(r.keyword === "all-two" && r.country === "QA"));
+    const tracked = new Map([
+      ["all-one", MARKETS], ["all-two", MARKETS], ["sa-only", ["SA"]],
+    ]);
+    render(<RankingGrid rows={holed} trackedMarkets={tracked} />);
+    expect(screen.getAllByText(/All markets/).length).toBe(1);
+    expect(screen.getByText(/· 2 keywords/)).toBeTruthy();
+    // and the hole reads as missing data, not as "not tracked here"
+    expect(screen.getByTitle(/didn't complete this keyword in this market/)).toBeTruthy();
+  });
+
+  it("still mutes a market the keyword genuinely does not target", () => {
+    render(<RankingGrid rows={rows} />);
+    expect(screen.getAllByTitle("Not tracked in this market").length).toBe(2); // sa-only: QA + AE
+  });
+});

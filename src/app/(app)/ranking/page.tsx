@@ -20,6 +20,18 @@ export default async function RankingPage({ searchParams }: { searchParams: Prom
   const weeks = weekly.map((w) => w.week);
   const volumes = await getKeywordVolumes();
 
+  // Which markets each keyword targets, gathered across every week on the page. A single
+  // week can't answer this: a pair the sweep failed to check is simply absent, which
+  // would read as "not tracked here" and reshuffle the market groups.
+  const trackedMarkets = new Map<string, string[]>();
+  for (const { rows } of weekly) {
+    for (const r of rows) {
+      const list = trackedMarkets.get(r.keyword) ?? [];
+      if (!list.includes(r.country)) list.push(r.country);
+      trackedMarkets.set(r.keyword, list);
+    }
+  }
+
   const isAdmin = isAdminRole(await getCurrentRole());
 
   // Freshness hint for the sync panel. Admin-only and best-effort: if the tracker is
@@ -42,7 +54,7 @@ export default async function RankingPage({ searchParams }: { searchParams: Prom
         <span className="text-xs text-slate-500">{weeks.length} week{weeks.length === 1 ? "" : "s"} tracked · newest on top</span>
       </div>
       <p className="text-xs text-slate-500">
-        <span className="font-semibold text-emerald-600">↑</span> improved · <span className="font-semibold text-rose-500">↓</span> dropped vs previous week · (n) = previous position · <span className="rounded bg-rose-50 px-1 font-semibold text-rose-700 ring-1 ring-rose-200">↓ Lost</span> = was ranked last week, now out of the top 100 · <span className="text-slate-400">Not in top 100</span> = tracked, never ranked · muted <span className="text-slate-300">·</span> = not tracked in that market. Keywords are grouped by target market.
+        <span className="font-semibold text-emerald-600">↑</span> improved · <span className="font-semibold text-rose-500">↓</span> dropped vs previous week · (n) = previous position · <span className="rounded bg-rose-50 px-1 font-semibold text-rose-700 ring-1 ring-rose-200">↓ Lost</span> = was ranked last week, now out of the top 100 · <span className="text-slate-400">Not in top 100</span> = tracked, never ranked · <span className="text-slate-400">–</span> = tracked, but the checker returned no result that week · muted <span className="text-slate-300">·</span> = not tracked in that market. Keywords are grouped by target market.
         {!site ? " Showing the first site — use the selector in the top bar to change site." : ""}
       </p>
 
@@ -72,7 +84,7 @@ export default async function RankingPage({ searchParams }: { searchParams: Prom
                 <h2 className="text-sm font-semibold text-slate-800">Week of {week}</h2>
                 {i === 0 ? <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">Latest</span> : null}
               </div>
-              <RankingGrid rows={rows} globalVolume={volumes.global} marketVolume={volumes.perMarket} />
+              <RankingGrid rows={rows} globalVolume={volumes.global} marketVolume={volumes.perMarket} trackedMarkets={trackedMarkets} />
             </section>
           ))}
         </div>

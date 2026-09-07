@@ -1,7 +1,7 @@
 import "server-only";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { createBpnClient, type BpnClient } from "./bpn-client";
-import { buildWeek, isoWeekMonday, sweepVerdict } from "./bpn-week";
+import { buildWeek, isoWeekMonday, sweepVerdict, expectedPairsFrom, COVERAGE_LOOKBACK_WEEKS } from "./bpn-week";
 
 export type IngestResult = {
   site: string;
@@ -65,17 +65,26 @@ export async function ingestRankingWeek(opts: {
   for (const site of sites as Array<{ id: string; domain: string; display_name: string }>) {
     const base = { site: site.domain, week, written: 0, unmatched: 0 };
 
-    // The previous stored week is our yardstick for both coverage and the all-zero check.
-    const { data: prevWeeks } = await db
+    // Two different yardsticks, deliberately:
+    //   coverage  → the fullest of the last few weeks, so one partial sweep can't drag
+    //               the baseline down and make the next thin week look complete.
+    //   all-zero  → the week immediately before, which is the only fair comparison for
+    //               "did everything really stop ranking?".
+    const { data: recentRows } = await db
       .from("rankings")
       .select("week_date")
       .eq("site_id", site.id)
       .lt("week_date", week)
       .order("week_date", { ascending: false })
-      .limit(1);
-    const prevWeek = (prevWeeks ?? [])[0]?.week_date as string | undefined;
+      .limit(COVERAGE_LOOKBACK_WEEKS * 400);
+    const countsByWeek = new Map<string, number>();
+    for (const r of (recentRows ?? []) as Array<{ week_date: string }>) {
+      countsByWeek.set(r.week_date, (countsByWeek.get(r.week_date) ?? 0) + 1);
+    }
+    const recentWeeks = [...countsByWeek.keys()].sort().reverse();
+    const prevWeek = recentWeeks[0];
+    const expectedPairs = expectedPairsFrom(recentWeeks.map((w) => countsByWeek.get(w) ?? 0));
 
-    let expectedPairs: number | undefined;
     let prevRanked: number | null = null;
     if (prevWeek) {
       const { data: prevRows } = await db
@@ -83,7 +92,6 @@ export async function ingestRankingWeek(opts: {
         .select("position")
         .eq("site_id", site.id)
         .eq("week_date", prevWeek);
-      expectedPairs = prevRows?.length;
       prevRanked = (prevRows ?? []).filter((r) => r.position != null).length;
     }
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { normalizePosition, isoWeekMonday, buildWeek, sweepVerdict, parseCheckedAt, type BpnRow } from "./bpn-week";
+import { normalizePosition, isoWeekMonday, buildWeek, sweepVerdict, parseCheckedAt, expectedPairsFrom, type BpnRow } from "./bpn-week";
 
 const row = (keyword: string, country: string, position: number | null, checked_at: string): BpnRow => ({
   domain: "gulfrecoverygroup.com", keyword, country, language: "ar", position, checked_at,
@@ -132,5 +132,31 @@ describe("parseCheckedAt (panel timestamps are UTC-4, not UTC)", () => {
   it("still counts a check the panel stamps late on the closing Sunday", () => {
     // Panel "2026-08-30 21:00" is Monday 2026-08-31T01:00Z — inside week 2026-08-31.
     expect(buildWeek([row("kwA", "SA", 3, "2026-08-30 21:00:00")], "2026-08-31").checked).toBe(1);
+  });
+});
+
+describe("expectedPairsFrom", () => {
+  it("takes the fullest recent week, not the most recent one", () => {
+    // Live case: 2026-08-31 stored only 89 rows because that sweep stopped early, so
+    // measuring against it reported 127 imported pairs as "143% coverage".
+    expect(expectedPairsFrom([89, 144, 144, 144])).toBe(144);
+  });
+
+  it("ignores weeks outside the lookback window", () => {
+    expect(expectedPairsFrom([11, 89, 90, 91, 144], 4)).toBe(91);
+  });
+
+  it("has no baseline on a first-ever import", () => {
+    expect(expectedPairsFrom([])).toBeUndefined();
+  });
+
+  it("skips empty weeks rather than treating them as a baseline of zero", () => {
+    expect(expectedPairsFrom([0, 0, 144])).toBe(144);
+  });
+
+  it("keeps a thin week thin when every recent week was full", () => {
+    const b = buildWeek([row("kwA", "SA", 3, "2026-09-08 05:00:00")], "2026-09-07", expectedPairsFrom([144, 144]));
+    expect(b.coverage).toBeCloseTo(1 / 144);
+    expect(sweepVerdict(b, 21).partial).toBe(true);
   });
 });

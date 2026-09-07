@@ -43,10 +43,19 @@ export function RankingGrid({
   rows,
   globalVolume,
   marketVolume,
+  trackedMarkets,
 }: {
   rows: GridRow[];
   globalVolume?: Map<string, number>;
   marketVolume?: Map<string, number>;
+  /**
+   * Which markets each keyword is actually tracked in, gathered across the weeks on the
+   * page. Without it a market a sweep simply failed to check looks identical to a market
+   * the keyword was never tracked in, which silently reclassifies the keyword and
+   * shatters the market groups (week 2026-09-07 rendered 10 group headers instead of 2
+   * because 17 pairs were missing).
+   */
+  trackedMarkets?: Map<string, string[]>;
 }) {
   if (rows.length === 0) return <p className="text-sm text-slate-500">No ranking data for this week.</p>;
 
@@ -59,9 +68,13 @@ export function RankingGrid({
   const totalCols = 3 + countries.length * 2;
   const headBase = "bg-slate-50 px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500";
 
-  // A keyword is tracked in a market only if it has a row there. All-market keywords have all
-  // countries; country-specific ones have exactly one -> that's how we group + mute.
-  const trackedIn = (kw: string) => countries.filter((c) => byKey.has(`${kw}|${c}`));
+  // Which markets a keyword targets: the page-wide picture when we have it, else this
+  // week's rows. All-market keywords cover every country; country-specific ones exactly
+  // one -> that's how we group + mute.
+  const trackedIn = (kw: string) => {
+    const declared = trackedMarkets?.get(kw);
+    return declared ? countries.filter((c) => declared.includes(c)) : countries.filter((c) => byKey.has(`${kw}|${c}`));
+  };
   const groupOf = (kw: string) => {
     const t = trackedIn(kw);
     return t.length === countries.length ? "ALL" : t.length === 1 ? t[0] : "MULTI";
@@ -69,13 +82,23 @@ export function RankingGrid({
   const groupLabel = (g: string) =>
     g === "ALL" ? "🌐 All markets" : g === "MULTI" ? "Selected markets" : `${FLAG[g] ?? ""} ${marketLabel(g)}`.trim();
 
+  // Walk group by group rather than in raw keyword order: a header is emitted when the
+  // group changes, so interleaved groups would repeat the same header again and again
+  // (and collide on their React keys). All markets first, then multi-market, then each
+  // single market in column order; keyword_sort still orders rows inside a group.
+  const groupRank = (g: string) => (g === "ALL" ? -2 : g === "MULTI" ? -1 : countries.indexOf(g));
+  const keywordRank = new Map(keywords.map((k, i) => [k, i]));
+  const ordered = [...keywords].sort(
+    (a, b) => groupRank(groupOf(a)) - groupRank(groupOf(b)) || keywordRank.get(a)! - keywordRank.get(b)!,
+  );
+
   const body: React.ReactNode[] = [];
   let prevGroup: string | null = null;
   let parity = 0;
-  for (const kw of keywords) {
+  for (const kw of ordered) {
     const g = groupOf(kw);
     if (g !== prevGroup) {
-      const count = keywords.filter((k) => groupOf(k) === g).length;
+      const count = ordered.filter((k) => groupOf(k) === g).length;
       body.push(
         <tr key={`hdr-${g}`}>
           <td colSpan={totalCols} className="border-y border-slate-200 bg-slate-100/80 px-3 py-1.5 text-left text-xs font-semibold text-slate-700">
@@ -100,7 +123,25 @@ export function RankingGrid({
           {formatVolume(globalVolume?.get(kw))}
         </td>
         {countries.map((c) => {
-          const tracked = byKey.has(`${kw}|${c}`);
+          const tracked = trackedIn(kw).includes(c);
+          if (tracked && !byKey.has(`${kw}|${c}`)) {
+            // Tracked here, but this week's sweep never returned a result for the pair.
+            // Distinct from "not tracked" on purpose — one is how the grid is shaped,
+            // the other is a hole in the data.
+            return (
+              <Fragment key={c}>
+                <td
+                  title="No result this week — the rank checker didn't complete this keyword in this market"
+                  className="border-l-2 border-slate-100 border-l-slate-200 px-3 py-2 text-center align-middle text-xs text-slate-400"
+                >
+                  –
+                </td>
+                <td className="px-3 py-2 text-center align-middle tabular-nums text-xs text-slate-400">
+                  {formatVolume(marketVolume?.get(`${kw}|${c}`))}
+                </td>
+              </Fragment>
+            );
+          }
           if (!tracked) {
             // keyword isn't tracked in this market — mute it so the market it DOES target stands out
             return (

@@ -96,6 +96,27 @@ export function buildWeek(rows: BpnRow[], weekMonday: string, expectedPairs?: nu
   };
 }
 
+/** How many recent weeks the coverage baseline looks back over. */
+export const COVERAGE_LOOKBACK_WEEKS = 4;
+
+/**
+ * The pair count a full week SHOULD have, given the row counts of recent stored weeks
+ * (newest first).
+ *
+ * The fullest recent week, not the last one: measuring against the previous week alone
+ * makes the baseline drift down after every partial sweep. Live example — week 2026-08-31
+ * stored 89 rows because that sweep stopped early, so importing 127 pairs the week after
+ * reported "143% coverage" and a genuinely thin week could have passed as complete. The
+ * real grid is 144 pairs, which is what the fullest of the last few weeks shows.
+ */
+export function expectedPairsFrom(
+  weekCounts: number[],
+  lookback = COVERAGE_LOOKBACK_WEEKS,
+): number | undefined {
+  const recent = weekCounts.slice(0, lookback).filter((n) => n > 0);
+  return recent.length ? Math.max(...recent) : undefined;
+}
+
 // A sweep smaller than this can legitimately be all-zero (a couple of stragglers
 // re-checked), so it isn't evidence of a broken checker.
 const MIN_SAMPLE_FOR_ZERO_ALARM = 20;
