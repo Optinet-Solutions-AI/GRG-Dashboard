@@ -14,13 +14,33 @@ export type SweepDecision = { trigger: boolean; reason: string };
 /** A week, minus a day of slack so a cron that slips an hour still refreshes. */
 export const STALE_AFTER_HOURS = 6 * 24;
 
+/**
+ * Sweeps die half-way — 2026-09-01 stopped at 89 of 144 pairs, the next one at 11 — and
+ * a dead sweep leaves last_checked looking recent, so the time rule alone would sit on a
+ * near-empty week for a full six days. Below this coverage we retry early.
+ */
+export const COVERAGE_FLOOR = 0.7;
+
+/**
+ * …but only once the last check is this old, which is what keeps the retry from firing
+ * while a multi-hour sweep is still working through the queue (and bounds a genuinely
+ * thin week to a retry every couple of days rather than a full sweep every night).
+ */
+export const COVERAGE_RETRY_AFTER_HOURS = 48;
+
 export function shouldTriggerSweep(opts: {
   /** `last_checked` for the site from the tracker's domain registry (panel-local time). */
   lastChecked: string | null;
   now: Date;
   staleAfterHours?: number;
+  /** Coverage of the week just imported (null when there's no previous week to compare). */
+  coverage?: number | null;
+  coverageFloor?: number;
+  coverageRetryAfterHours?: number;
 }): SweepDecision {
   const staleAfter = opts.staleAfterHours ?? STALE_AFTER_HOURS;
+  const floor = opts.coverageFloor ?? COVERAGE_FLOOR;
+  const retryAfter = opts.coverageRetryAfterHours ?? COVERAGE_RETRY_AFTER_HOURS;
   if (!opts.lastChecked) {
     return { trigger: true, reason: "the tracker has no check on record for this site" };
   }
@@ -39,8 +59,21 @@ export function shouldTriggerSweep(opts: {
       reason: `last check was ${Math.round(ageHours)}h ago (stale after ${staleAfter}h)`,
     };
   }
+  if (opts.coverage != null && opts.coverage < floor && ageHours >= retryAfter) {
+    return {
+      trigger: true,
+      reason:
+        `the stored week covers only ${Math.round(opts.coverage * 100)}% of the tracked pairs ` +
+        `and the last check was ${Math.round(ageHours)}h ago — retrying the sweep rather than ` +
+        `waiting out the ${staleAfter}h window`,
+    };
+  }
+  const thin =
+    opts.coverage != null && opts.coverage < floor
+      ? ` (week is thin at ${Math.round(opts.coverage * 100)}%, retrying after ${retryAfter}h)`
+      : "";
   return {
     trigger: false,
-    reason: `last check was ${Math.round(ageHours)}h ago — still fresh (stale after ${staleAfter}h)`,
+    reason: `last check was ${Math.round(ageHours)}h ago — still fresh (stale after ${staleAfter}h)${thin}`,
   };
 }

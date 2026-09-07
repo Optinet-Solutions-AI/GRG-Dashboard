@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { shouldTriggerSweep, STALE_AFTER_HOURS } from "./sweep";
+import { shouldTriggerSweep, STALE_AFTER_HOURS, COVERAGE_RETRY_AFTER_HOURS } from "./sweep";
 
 // Panel timestamps are UTC-4 (see parseCheckedAt), so a panel string of "04:00" is 08:00Z.
 const now = new Date("2026-09-07T08:00:00Z");
@@ -48,5 +48,40 @@ describe("shouldTriggerSweep", () => {
   it("respects a caller-supplied window", () => {
     const d = shouldTriggerSweep({ lastChecked: "2026-09-07 00:00:00", now, staleAfterHours: 2 });
     expect(d.trigger).toBe(true); // 4h old against a 2h window
+  });
+});
+
+describe("shouldTriggerSweep — partial weeks", () => {
+  // Panel time is UTC-4, so a panel string is `now` minus the age minus 4h.
+  const panelAged = (hours: number) =>
+    new Date(now.getTime() - (hours + 4) * 3_600_000).toISOString().slice(0, 19).replace("T", " ");
+
+  it("retries a thin week once the dead sweep has stopped progressing", () => {
+    // 11 of 144 pairs is the 2026-09-07 sweep: it stopped, so waiting out the week is wrong.
+    const d = shouldTriggerSweep({ lastChecked: panelAged(COVERAGE_RETRY_AFTER_HOURS + 1), now, coverage: 11 / 144 });
+    expect(d.trigger).toBe(true);
+    expect(d.reason).toMatch(/covers only 8%/);
+  });
+
+  it("leaves a thin week alone while a sweep could still be working through it", () => {
+    const d = shouldTriggerSweep({ lastChecked: panelAged(3), now, coverage: 11 / 144 });
+    expect(d.trigger).toBe(false);
+    expect(d.reason).toMatch(/thin at 8%/);
+  });
+
+  it("does not retry a week that is covered well enough", () => {
+    const d = shouldTriggerSweep({ lastChecked: panelAged(COVERAGE_RETRY_AFTER_HOURS + 1), now, coverage: 0.94 });
+    expect(d.trigger).toBe(false);
+  });
+
+  it("ignores coverage it cannot judge (no previous week to compare)", () => {
+    const d = shouldTriggerSweep({ lastChecked: panelAged(COVERAGE_RETRY_AFTER_HOURS + 1), now, coverage: null });
+    expect(d.trigger).toBe(false);
+  });
+
+  it("still prefers the plain staleness reason once the full window passes", () => {
+    const d = shouldTriggerSweep({ lastChecked: panelAged(STALE_AFTER_HOURS + 1), now, coverage: 0.1 });
+    expect(d.trigger).toBe(true);
+    expect(d.reason).toMatch(/stale after/);
   });
 });

@@ -64,10 +64,19 @@ export async function refreshRankings(opts: {
   // The registry carries the project id, so a sweep never needs it hard-coded here.
   const projectId = registry[0]?.project_id ?? Number(process.env.BPN_PROJECT_ID ?? 18);
 
+  // Coverage is judged only on sites the tracker actually knows about: .org and .net are
+  // absent from its registry, so counting them would look like 0% forever.
+  const inRegistry = new Set(registry.map((d) => d.domain.toLowerCase()));
+  const trackedCoverages = imports
+    .filter((r) => inRegistry.has(r.site.toLowerCase()))
+    .map((r) => r.coverage)
+    .filter((c): c is number => c != null);
+  const coverage = trackedCoverages.length ? Math.max(...trackedCoverages) : null;
+
   const decision =
     mode === "force"
       ? { trigger: true, reason: "forced by an explicit request" }
-      : shouldTriggerSweep({ lastChecked, now });
+      : shouldTriggerSweep({ lastChecked, now, coverage });
 
   if (!decision.trigger) {
     return { week, imports, sweep: { triggered: false, reason: decision.reason, projectId, lastChecked, run: null } };
