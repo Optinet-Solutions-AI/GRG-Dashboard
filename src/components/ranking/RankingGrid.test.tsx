@@ -85,6 +85,7 @@ describe("RankingGrid market grouping", () => {
     expect(screen.getAllByText(/All markets/).length).toBe(1);
     expect(screen.getByText(/· 2 keywords/)).toBeTruthy();
     // and the hole reads as missing data, not as "not tracked here"
+    expect(screen.getByText("Not checked")).toBeTruthy();
     expect(screen.getByTitle(/didn't complete this keyword in this market/)).toBeTruthy();
   });
 
@@ -123,3 +124,34 @@ describe("RankingGrid movement labels", () => {
     expect(screen.getByText("↑ new")).toBeTruthy();
   });
 })
+
+describe("RankingGrid missing checks read as text, not punctuation", () => {
+  // A market only gets a column if SOME row in the week has it, so a second keyword
+  // holds the QA column open while the keyword under test is missing its QA check.
+  const rows: GridRow[] = [
+    { keyword: "kw", keyword_sort: 0, country: "SA", country_sort: 0, position: null, prev_position: null },
+    { keyword: "other", keyword_sort: 1, country: "SA", country_sort: 0, position: 4, prev_position: 4 },
+    { keyword: "other", keyword_sort: 1, country: "QA", country_sort: 1, position: 9, prev_position: 9 },
+  ];
+  const tracked = new Map([["kw", ["SA", "QA"]], ["other", ["SA", "QA"]]]);
+
+  it("says 'Not checked' rather than a dash a reader mistakes for an empty cell", () => {
+    render(<RankingGrid rows={rows} trackedMarkets={tracked} />);
+    expect(screen.getByText("Not checked")).toBeTruthy();
+    expect(screen.queryByText("–")).toBeNull();
+  });
+
+  it("keeps it distinct from a market that was checked and simply isn't ranking", () => {
+    render(<RankingGrid rows={rows} trackedMarkets={tracked} />);
+    expect(screen.getByText("Not in top 100")).toBeTruthy(); // kw in SA: checked, unranked
+    expect(screen.getByText("Not checked")).toBeTruthy();    // kw in QA: never checked
+  });
+
+  it("drops a market from the week entirely when nothing in it was checked", () => {
+    // OM is tracked but has no row anywhere this week -> no column, so no phantom cells.
+    const t2 = new Map([["kw", ["SA", "QA", "OM"]], ["other", ["SA", "QA", "OM"]]]);
+    render(<RankingGrid rows={rows} trackedMarkets={t2} />);
+    expect(screen.queryByText(/Oman|OM/)).toBeNull();
+    expect(screen.getAllByText("Not checked").length).toBe(1); // QA only, not OM
+  });
+});

@@ -144,10 +144,14 @@ export function RankingGrid({
             return (
               <Fragment key={c}>
                 <td
-                  title="No result this week — the rank checker didn't complete this keyword in this market"
-                  className="border-l-2 border-slate-100 border-l-slate-200 px-3 py-2 text-center align-middle text-xs text-slate-400"
+                  title="The rank checker didn't complete this keyword in this market — the next sweep fills it in"
+                  className="border-l-2 border-slate-100 border-l-slate-200 px-3 py-2 text-center align-middle"
                 >
-                  –
+                  {/* A bare dash here read as an empty cell, so it says what it is: the
+                      check is missing, which is NOT the same as "not ranking". */}
+                  <span className="rounded bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-700 ring-1 ring-amber-200">
+                    Not checked
+                  </span>
                 </td>
                 <td className="px-3 py-2 text-center align-middle tabular-nums text-xs text-slate-400">
                   {formatVolume(marketVolume?.get(`${kw}|${c}`))}
