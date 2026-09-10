@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { pageSpeedInsights } from "@/lib/sources/pagespeed-insights";
 import { mapWithLimit } from "@/lib/concurrency";
 import { pendingPagespeedUrls } from "@/lib/sources/pending-urls";
+import { cycleStart } from "@/lib/schedule/cycle";
 
 // Scheduled/triggered PageSpeed refresh for the active URLs.
 // Scores only — the proof screenshot of the real PSI report is captured separately
@@ -16,6 +17,10 @@ import { pendingPagespeedUrls } from "@/lib/sources/pending-urls";
 // those with no entry for today, so calling it again resumes exactly where it left
 // off instead of duplicating a day's captures (?force=1 to capture again anyway).
 //   ?probe=1    report what would run, without spending ~25s per URL
+//
+// Captures are per 15-day cycle (see lib/schedule/cycle.ts): each tracked URL gets one
+// snapshot per cycle, the most starved URL first, spilling over to following days until
+// every URL is covered — then nothing until the next cycle. ?force=1 ignores the cycle.
 //   ?batch=N    override how many URLs this invocation handles
 //   ?force=1    ignore today's existing entries and refresh anyway
 export const maxDuration = 60;
@@ -53,9 +58,14 @@ export async function GET(request: Request) {
   const all = (urlRows ?? []) as Array<{ id: string; url: string }>;
 
   const date = todayLocal();
+  // One snapshot per URL per 15-day cycle (the 1st and the 16th). Three URLs at ~50s each
+  // can't share a 60s invocation, so the cycle lets them spill across consecutive days —
+  // 1st, 2nd, 3rd — and then go quiet, instead of either cramming them into one day or
+  // re-capturing every day. A day that can't run costs a day, never the cycle.
+  const cycle = cycleStart(date);
   const { data: doneRows } = await db
-    .from("pagespeed_entries").select("pagespeed_url_id").eq("date", date);
-  const doneToday = force ? [] : ((doneRows ?? []) as Array<{ pagespeed_url_id: string }>);
+    .from("pagespeed_entries").select("pagespeed_url_id, date").gte("date", cycle);
+  const doneThisCycle = force ? [] : ((doneRows ?? []) as Array<{ pagespeed_url_id: string }>);
 
   // Give the slot to the URL that has waited longest. Ordering by sort_order instead
   // handed it to the first URL every day: six automated runs in a row captured .com and
@@ -70,13 +80,13 @@ export async function GET(request: Request) {
     if (lastCaptured.get(row.pagespeed_url_id) == null) lastCaptured.set(row.pagespeed_url_id, row.date);
   }
 
-  const todo = pendingPagespeedUrls(all, doneToday, batch, lastCaptured);
-  const remainingBefore = all.length - doneToday.length;
+  const todo = pendingPagespeedUrls(all, doneThisCycle, batch, lastCaptured);
+  const remainingBefore = all.length - new Set(doneThisCycle.map((d) => d.pagespeed_url_id)).size;
 
   if (params.get("probe") === "1") {
     return NextResponse.json({
-      ok: true, probe: true, date, batch,
-      tracked: all.length, doneToday: doneToday.length,
+      ok: true, probe: true, date, batch, cycle,
+      tracked: all.length, doneThisCycle: new Set(doneThisCycle.map((d) => d.pagespeed_url_id)).size,
       wouldRefresh: todo.map((u) => u.url), remaining: remainingBefore,
       lastCaptured: Object.fromEntries(all.map((u) => [u.url, lastCaptured.get(u.id) ?? "never"])),
     });

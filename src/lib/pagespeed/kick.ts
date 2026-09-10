@@ -21,8 +21,9 @@ function baseUrl(): string | null {
  * Ask the PageSpeed route to capture whichever tracked URL has waited longest.
  *
  * Fire-and-forget by design: a timeout here means the capture is running, not that it
- * failed. Called once a day from the ranking cron, this rotates through every tracked URL
- * — which is what .org and .net never got before (six automated runs, all .com).
+ * failed. Called once a day from the ranking cron. The route itself only captures URLs
+ * that still owe a snapshot for the current 15-day cycle, so a daily kick fills the cycle
+ * over consecutive days and then costs nothing until the next one.
  */
 export async function kickPagespeedCapture(opts: { batch?: number } = {}): Promise<PsiKick> {
   const base = baseUrl();
@@ -39,12 +40,17 @@ export async function kickPagespeedCapture(opts: { batch?: number } = {}): Promi
       signal: AbortSignal.timeout(DISPATCH_WAIT_MS),
     });
     // Fast reply = nothing was pending, or it failed outright. Either way it's finished.
-    const body = (await res.json().catch(() => null)) as { refreshed?: unknown; remaining?: number } | null;
+    const body = (await res.json().catch(() => null)) as
+      | { attempted?: number; updated?: number; remaining?: number; complete?: boolean }
+      | null;
+    if (res.ok && body?.attempted === 0) {
+      return { dispatched: true, target, detail: "nothing owed this cycle — no capture spent" };
+    }
     return {
       dispatched: res.ok,
       target,
       detail: res.ok
-        ? `finished within ${DISPATCH_WAIT_MS} ms — ${JSON.stringify(body?.refreshed ?? body ?? {})}`
+        ? `finished within ${DISPATCH_WAIT_MS} ms — updated ${body?.updated ?? 0}, ${body?.remaining ?? "?"} left this cycle`
         : `PageSpeed route returned HTTP ${res.status}`,
     };
   } catch (e) {
