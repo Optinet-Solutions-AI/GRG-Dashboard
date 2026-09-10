@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { refreshRankings, type SweepMode } from "@/lib/rankings/refresh";
+import { runSeoAnalysis, type RunResult } from "@/lib/seo-analyzer/run";
 
 // Ranking automation, end to end. Two halves on purpose:
 //   1. IMPORT — read whatever the tracker has already checked for the current ISO week
@@ -20,6 +21,12 @@ import { refreshRankings, type SweepMode } from "@/lib/rankings/refresh";
 //   GET /api/cron/ranking?week=2026-08-31    target a specific ISO week (Monday)
 //   GET /api/cron/ranking?sweep=0            import only, never queue a sweep
 //   GET /api/cron/ranking?sweep=1            queue a sweep even if the data looks fresh
+//   GET /api/cron/ranking?seo=0               skip the SEO analysis half
+//
+// It also carries the computed SEO score for .org/.net (see /api/cron/seo-analysis) for
+// the same reason it carries the sweep: Hobby gives a project two cron slots and both are
+// spoken for. That step is isolated — if the analyzer throws, the ranking result still
+// returns, because a ranking import must not fail over a secondary job.
 export const maxDuration = 60;
 
 export async function GET(request: Request) {
@@ -38,8 +45,19 @@ export async function GET(request: Request) {
     const { imports, sweep: sweepOutcome } = await refreshRankings({ week, dryRun, sweep });
     const wrote = imports.some((r) => r.written > 0 && !r.skipped);
     if (wrote && !dryRun) revalidatePath("/ranking");
+
+    let seo: RunResult[] | { error: string } | null = null;
+    if (url.searchParams.get("seo") !== "0") {
+      try {
+        seo = await runSeoAnalysis({ dryRun });
+        if (!dryRun && (seo as RunResult[]).some((r) => !r.skipped)) revalidatePath("/seo");
+      } catch (e) {
+        seo = { error: e instanceof Error ? e.message : "seo analysis failed" };
+      }
+    }
+
     // A refused week is a successful run that declined to store bad data, not an error.
-    return NextResponse.json({ ok: true, dryRun, results: imports, sweep: sweepOutcome });
+    return NextResponse.json({ ok: true, dryRun, results: imports, sweep: sweepOutcome, seo });
   } catch (e) {
     return NextResponse.json(
       { ok: false, error: e instanceof Error ? e.message : "ranking ingest failed" },

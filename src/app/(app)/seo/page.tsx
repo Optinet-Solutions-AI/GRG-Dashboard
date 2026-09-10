@@ -6,6 +6,8 @@ import { addSeoPeriod, updateSeoPeriod, deleteSeoPeriod } from "./actions";
 import { AddSeoPeriod } from "@/components/entry/AddSeoPeriod";
 import { EditEntryForm } from "@/components/entry/EditEntryForm";
 import { SEO_FIELDS } from "@/lib/entries/entry-fields";
+import { AnalyzeSeo } from "@/components/seo/AnalyzeSeo";
+import { SeoCheckBreakdown, type StoredAnalysis } from "@/components/seo/SeoCheckBreakdown";
 
 function scoreColor(n: number | null): string {
   if (n == null) return "text-slate-400";
@@ -22,6 +24,8 @@ type Row = {
   warnings: number | null;
   failed_tests: number | null;
   screenshot_path: string | null;
+  source: string | null;
+  analysis: StoredAnalysis | null;
   sites: { display_name: string };
 };
 
@@ -30,7 +34,7 @@ export default async function SeoPage({ searchParams }: { searchParams: Promise<
   const supabase = await createServerSupabaseClient();
   const isAdmin = isAdminRole(await getCurrentRole());
 
-  const { data: siteList } = await supabase.from("sites").select("id, display_name").order("sort_order");
+  const { data: siteList } = await supabase.from("sites").select("id, display_name, auto_seo_analysis").order("sort_order");
   const siteId = resolveSiteId(siteList, site);
   const selectedSite = (siteList ?? []).find((s) => s.id === siteId);
   const today = new Date();
@@ -38,7 +42,7 @@ export default async function SeoPage({ searchParams }: { searchParams: Promise<
 
   let q = supabase
     .from("seo_scores")
-    .select("id, date, seo_score, passed_tests, warnings, failed_tests, screenshot_path, site_id, sites!inner(display_name, sort_order)")
+    .select("id, date, seo_score, passed_tests, warnings, failed_tests, screenshot_path, source, analysis, site_id, sites!inner(display_name, sort_order)")
     .order("date", { ascending: false });
   if (siteId) q = q.eq("site_id", siteId);
   const { data } = await q;
@@ -48,7 +52,14 @@ export default async function SeoPage({ searchParams }: { searchParams: Promise<
 
   return (
     <div className="space-y-5">
-      <h1 className="text-xl font-bold">SEO Score (Rankmath)</h1>
+      <h1 className="text-xl font-bold">SEO Score</h1>
+      <p className="text-xs text-slate-500">
+        .com is scored by Rank Math and entered by hand. .org and .net have no Rank Math, so their score is computed
+        here from the live homepage — an approximation of the same test suite, best read against its own history.
+      </p>
+      {isAdmin && selectedSite?.auto_seo_analysis ? (
+        <AnalyzeSeo siteId={selectedSite.id} siteName={selectedSite.display_name} />
+      ) : null}
       {isAdmin && selectedSite ? (
         <AddSeoPeriod defaultDate={defaultDate} action={addSeoPeriod.bind(null, selectedSite.id)} />
       ) : null}
@@ -58,6 +69,12 @@ export default async function SeoPage({ searchParams }: { searchParams: Promise<
             <span className="font-semibold text-slate-900">{r.sites.display_name}</span>
             <div className="flex items-center gap-3">
               <span className="text-xs text-slate-500">{r.date}</span>
+              <span
+                title={r.source === "analyzer" ? "Computed by the built-in analyzer from the live homepage" : "Entered by hand from Rank Math"}
+                className={`rounded px-1.5 py-0.5 text-xs font-medium ring-1 ${r.source === "analyzer" ? "bg-sky-50 text-sky-700 ring-sky-200" : "bg-slate-50 text-slate-600 ring-slate-200"}`}
+              >
+                {r.source === "analyzer" ? "computed" : "Rank Math"}
+              </span>
               {isAdmin ? (
                 <EditEntryForm
                   fields={SEO_FIELDS}
@@ -99,6 +116,7 @@ export default async function SeoPage({ searchParams }: { searchParams: Promise<
               )}
             </div>
           </div>
+          <SeoCheckBreakdown analysis={r.analysis} />
         </div>
       ))}
       {rows.length === 0 ? <p className="text-sm text-slate-500">No SEO data yet.</p> : null}
