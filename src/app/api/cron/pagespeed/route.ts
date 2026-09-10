@@ -56,7 +56,21 @@ export async function GET(request: Request) {
   const { data: doneRows } = await db
     .from("pagespeed_entries").select("pagespeed_url_id").eq("date", date);
   const doneToday = force ? [] : ((doneRows ?? []) as Array<{ pagespeed_url_id: string }>);
-  const todo = pendingPagespeedUrls(all, doneToday, batch);
+
+  // Give the slot to the URL that has waited longest. Ordering by sort_order instead
+  // handed it to the first URL every day: six automated runs in a row captured .com and
+  // never once reached .org or .net.
+  const { data: historyRows } = await db
+    .from("pagespeed_entries")
+    .select("pagespeed_url_id, date")
+    .order("date", { ascending: false })
+    .limit(500);
+  const lastCaptured = new Map<string, string | null>(all.map((u) => [u.id, null]));
+  for (const row of (historyRows ?? []) as Array<{ pagespeed_url_id: string; date: string }>) {
+    if (lastCaptured.get(row.pagespeed_url_id) == null) lastCaptured.set(row.pagespeed_url_id, row.date);
+  }
+
+  const todo = pendingPagespeedUrls(all, doneToday, batch, lastCaptured);
   const remainingBefore = all.length - doneToday.length;
 
   if (params.get("probe") === "1") {
@@ -64,6 +78,7 @@ export async function GET(request: Request) {
       ok: true, probe: true, date, batch,
       tracked: all.length, doneToday: doneToday.length,
       wouldRefresh: todo.map((u) => u.url), remaining: remainingBefore,
+      lastCaptured: Object.fromEntries(all.map((u) => [u.url, lastCaptured.get(u.id) ?? "never"])),
     });
   }
 

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { refreshRankings, type SweepMode } from "@/lib/rankings/refresh";
 import { runSeoAnalysis, type RunResult } from "@/lib/seo-analyzer/run";
+import { kickPagespeedCapture, type PsiKick } from "@/lib/pagespeed/kick";
 
 // Ranking automation, end to end. Two halves on purpose:
 //   1. IMPORT — read whatever the tracker has already checked for the current ISO week
@@ -22,11 +23,15 @@ import { runSeoAnalysis, type RunResult } from "@/lib/seo-analyzer/run";
 //   GET /api/cron/ranking?sweep=0            import only, never queue a sweep
 //   GET /api/cron/ranking?sweep=1            queue a sweep even if the data looks fresh
 //   GET /api/cron/ranking?seo=0               skip the SEO analysis half
+//   GET /api/cron/ranking?psi=0               don't kick the PageSpeed capture
 //
-// It also carries the computed SEO score for .org/.net (see /api/cron/seo-analysis) for
-// the same reason it carries the sweep: Hobby gives a project two cron slots and both are
-// spoken for. That step is isolated — if the analyzer throws, the ranking result still
-// returns, because a ranking import must not fail over a secondary job.
+// It also carries two secondary jobs, for the same reason it carries the sweep: Hobby gives
+// a project two cron slots and both are spoken for.
+//   - the computed SEO score for .org/.net (see /api/cron/seo-analysis)
+//   - a daily kick of the PageSpeed capture, which runs as its own invocation because one
+//     PSI pass needs ~50s of a 60s budget
+// Both are isolated: if either throws, the ranking result still returns, because a ranking
+// import must not fail over a secondary job.
 export const maxDuration = 60;
 
 export async function GET(request: Request) {
@@ -56,8 +61,18 @@ export async function GET(request: Request) {
       }
     }
 
+    // Skipped on a dry run: there is no way to preview a capture without spending it.
+    let pagespeed: PsiKick | { error: string } | null = null;
+    if (!dryRun && url.searchParams.get("psi") !== "0") {
+      try {
+        pagespeed = await kickPagespeedCapture();
+      } catch (e) {
+        pagespeed = { error: e instanceof Error ? e.message : "pagespeed kick failed" };
+      }
+    }
+
     // A refused week is a successful run that declined to store bad data, not an error.
-    return NextResponse.json({ ok: true, dryRun, results: imports, sweep: sweepOutcome, seo });
+    return NextResponse.json({ ok: true, dryRun, results: imports, sweep: sweepOutcome, seo, pagespeed });
   } catch (e) {
     return NextResponse.json(
       { ok: false, error: e instanceof Error ? e.message : "ranking ingest failed" },
