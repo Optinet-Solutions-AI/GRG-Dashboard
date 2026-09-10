@@ -55,7 +55,8 @@ export default async function SeoPage({ searchParams }: { searchParams: Promise<
       <h1 className="text-xl font-bold">SEO Score</h1>
       <p className="text-xs text-slate-500">
         .com is scored by Rank Math and entered by hand. .org and .net have no Rank Math, so their score is computed
-        here from the live homepage — an approximation of the same test suite, best read against its own history.
+        here from the live homepage on the 1st and the 16th of each month — an approximation of the same test suite,
+        best read against its own history.
       </p>
       {isAdmin && selectedSite?.auto_seo_analysis ? (
         <AnalyzeSeo siteId={selectedSite.id} siteName={selectedSite.display_name} />

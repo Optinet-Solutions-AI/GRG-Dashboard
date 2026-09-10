@@ -12,6 +12,7 @@ import { runSeoAnalysis } from "@/lib/seo-analyzer/run";
 // a third slot is available).
 //
 //   GET /api/cron/seo-analysis?dry=1              score without storing
+//   GET /api/cron/seo-analysis?due=1              respect the 15-day rhythm (what the cron does)
 //   GET /api/cron/seo-analysis?site=<site_id>     just one site
 export const maxDuration = 60;
 
@@ -26,7 +27,7 @@ export async function GET(request: Request) {
   const dryRun = url.searchParams.get("dry") === "1";
 
   try {
-    const results = await runSeoAnalysis({ siteId, dryRun });
+    const results = await runSeoAnalysis({ siteId, dryRun, onlyWhenDue: url.searchParams.get("due") === "1" });
     if (!dryRun && results.some((r) => !r.skipped)) revalidatePath("/seo");
     return NextResponse.json({ ok: true, dryRun, results });
   } catch (e) {

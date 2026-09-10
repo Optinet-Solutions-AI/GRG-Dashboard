@@ -23,11 +23,13 @@ import { kickPagespeedCapture, type PsiKick } from "@/lib/pagespeed/kick";
 //   GET /api/cron/ranking?sweep=0            import only, never queue a sweep
 //   GET /api/cron/ranking?sweep=1            queue a sweep even if the data looks fresh
 //   GET /api/cron/ranking?seo=0               skip the SEO analysis half
+//   GET /api/cron/ranking?seo=1               score now, ignoring the 15-day rhythm
 //   GET /api/cron/ranking?psi=0               don't kick the PageSpeed capture
 //
 // It also carries two secondary jobs, for the same reason it carries the sweep: Hobby gives
 // a project two cron slots and both are spoken for.
-//   - the computed SEO score for .org/.net (see /api/cron/seo-analysis)
+//   - the computed SEO score for .org/.net, which stores on the 1st and the 16th only —
+//     the same ~15-day rhythm as the PageSpeed snapshots (see /api/cron/seo-analysis)
 //   - a daily kick of the PageSpeed capture, which runs as its own invocation because one
 //     PSI pass needs ~50s of a 60s budget
 // Both are isolated: if either throws, the ranking result still returns, because a ranking
@@ -54,7 +56,7 @@ export async function GET(request: Request) {
     let seo: RunResult[] | { error: string } | null = null;
     if (url.searchParams.get("seo") !== "0") {
       try {
-        seo = await runSeoAnalysis({ dryRun });
+        seo = await runSeoAnalysis({ dryRun, onlyWhenDue: url.searchParams.get("seo") !== "1" });
         if (!dryRun && (seo as RunResult[]).some((r) => !r.skipped)) revalidatePath("/seo");
       } catch (e) {
         seo = { error: e instanceof Error ? e.message : "seo analysis failed" };

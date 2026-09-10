@@ -28,6 +28,8 @@ export function AnalyzeSeo({ siteId, siteName }: { siteId: string; siteName: str
         This site has no Rank Math, so the score is computed here: the homepage is fetched and graded against the same
         class of site-wide tests Rank Math&apos;s SEO Analyzer runs. It is an approximation of Rank Math&apos;s number,
         not the same number — compare a site against its own history rather than against .com.
+        It refreshes on its own on the <strong>1st and the 16th</strong>, the same rhythm as the PageSpeed snapshots;
+        this button scores it now without waiting.
       </p>
       {state?.message ? <p className="mt-2 text-sm text-slate-700">{state.message}</p> : null}
       {state?.error ? <p className="mt-2 text-sm text-red-600">{state.error}</p> : null}

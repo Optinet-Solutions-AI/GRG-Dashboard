@@ -1,6 +1,7 @@
 import "server-only";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { analyzeUrl, type Analysis } from "./analyze";
+import { shouldRunSeoAnalysis } from "./cadence";
 
 export type RunResult = {
   site: string;
@@ -46,12 +47,17 @@ type SiteRow = { id: string; domain: string; display_name: string; auto_seo_anal
  * .com — that score is Rank Math's, entered by hand, and a computed number would both
  * overwrite it and mix two scales in the same column. A site whose page can't be fetched
  * is reported as skipped rather than stored as a pile of failures.
+ *
+ * `onlyWhenDue` applies the every-15-days rhythm (the 1st and the 16th, matching the
+ * PageSpeed snapshots) and is what the daily cron passes. The admin button leaves it off,
+ * so a person can always ask for a score now.
  */
 export async function runSeoAnalysis(opts: {
   siteId?: string;
   db?: SupabaseClient;
   now?: Date;
   dryRun?: boolean;
+  onlyWhenDue?: boolean;
 } = {}): Promise<RunResult[]> {
   const db = opts.db ?? serviceClient();
   const date = todayLocal(opts.now);
@@ -71,6 +77,25 @@ export async function runSeoAnalysis(opts: {
     if (!site.auto_seo_analysis) {
       out.push({ ...base, skipped: `${site.domain} takes its SEO score from Rank Math — the analyzer is off for it` });
       continue;
+    }
+
+    // Per site, not globally: each keeps its own 15-day rhythm, so adding a site later
+    // doesn't have to wait for the others' cycle.
+    if (opts.onlyWhenDue) {
+      const { data: lastRow } = await db
+        .from("seo_scores")
+        .select("date")
+        .eq("site_id", site.id)
+        .eq("source", "analyzer")
+        .order("date", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const lastRun = (lastRow as { date: string } | null)?.date ?? null;
+      const decision = shouldRunSeoAnalysis({ today: date, lastRun });
+      if (!decision.due) {
+        out.push({ ...base, skipped: decision.reason });
+        continue;
+      }
     }
 
     let analysis: Analysis;
