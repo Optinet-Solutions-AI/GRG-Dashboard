@@ -1,7 +1,7 @@
 import "server-only";
 import { createClient } from "@supabase/supabase-js";
 import { parseBacklinkSheet } from "./parse-sheet";
-import { routeBacklinksBySite } from "./route-by-site";
+import { routeBacklinksBySite, targetHost } from "./route-by-site";
 
 // Minimal interface so we can accept either createClient() or createServerSupabaseClient().
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -15,15 +15,22 @@ type AnyDB = { from(table: string): any };
  * site their `target_url` points at. It previously assigned every row to a single
  * hardcoded site, which attributed all the .org links to .com.
  *
- * `fallbackDomain` — where rows with a blank/unrecognised target go.
+ * Rows whose target matches no known site are SKIPPED and reported, never filed under a
+ * default site: that silent fallback is how 40 .org links were counted as .com backlinks.
  * `client` — optional; pass a session-based client from a server action so that
  * the admin's own RLS identity is used (no service-role key needed in Vercel).
  * Omit when calling from a cron route (uses service-role key instead).
  */
 export async function syncBacklinksFromSheet(
-  fallbackDomain = "gulfrecoverygroup.com",
   client?: AnyDB,
-): Promise<{ synced: number; date: string | null; bySite: Record<string, number>; unrouted: number }> {
+): Promise<{
+  synced: number;
+  stored: number;
+  date: string | null;
+  bySite: Record<string, number>;
+  unrouted: number;
+  unroutedHosts: Record<string, number>;
+}> {
   const csvUrl = process.env.BACKLINKS_SHEET_CSV_URL;
   if (!csvUrl) throw new Error("BACKLINKS_SHEET_CSV_URL is not set.");
   const res = await fetch(csvUrl, { cache: "no-store", redirect: "follow" });
@@ -36,13 +43,17 @@ export async function syncBacklinksFromSheet(
     { auth: { persistSession: false } },
   );
 
-  const sites = (await db.from("sites").select("id, domain")).data as Array<{ id: string; domain: string }> | null;
+  const { data: siteData, error: sitesErr } = await db.from("sites").select("id, domain");
+  if (sitesErr) throw new Error(`Could not read the sites list: ${sitesErr.message}`);
+  const sites = siteData as Array<{ id: string; domain: string }> | null;
   if (!sites?.length) throw new Error("No sites found. Check SUPABASE_SERVICE_ROLE_KEY is set in your deployment env vars.");
-  if (!sites.some((s) => s.domain === fallbackDomain)) {
-    throw new Error(`Fallback site not found: ${fallbackDomain}.`);
-  }
 
-  const { bySite, unrouted } = routeBacklinksBySite(rows, sites, fallbackDomain);
+  const { bySite, unrouted } = routeBacklinksBySite(rows, sites);
+  const unroutedHosts: Record<string, number> = {};
+  for (const r of unrouted) {
+    const h = targetHost(r);
+    unroutedHosts[h] = (unroutedHosts[h] ?? 0) + 1;
+  }
   const domainOf = new Map(sites.map((s) => [s.id, s.domain]));
   const counts: Record<string, number> = {};
 
@@ -70,5 +81,6 @@ export async function syncBacklinksFromSheet(
   }
 
   const date = rows.map((r) => r.date).sort().at(-1) ?? null;
-  return { synced: rows.length, date, bySite: counts, unrouted };
+  const stored = Object.values(counts).reduce((n, v) => n + v, 0);
+  return { synced: rows.length, stored, date, bySite: counts, unrouted: unrouted.length, unroutedHosts };
 }

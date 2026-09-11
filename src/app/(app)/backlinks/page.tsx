@@ -12,9 +12,24 @@ type Row = {
   sites: { display_name: string };
 };
 
+/**
+ * The sheet carries TWO columns that can disagree: `status` ("Indexed" / "Not Indexed" /
+ * "Submitted") and a free-text `indexed` note ("Indexed by Google" or blank). Counting the
+ * card from one and the "By status" list from the other made the page contradict itself —
+ * 103 in the card beside 104 in the list, because one row's status said Indexed while its
+ * indexed cell was left blank.
+ *
+ * `status` is the single source of truth here: it is the column the breakdown shows and
+ * the one that is always filled in. Rows where the note disagrees are surfaced separately
+ * rather than silently changing the total.
+ */
 function isIndexed(v: string | null): boolean {
-  if (!v) return false;
-  return !/^(no|not)/i.test(v.trim());
+  return (v ?? "").trim().toLowerCase() === "indexed";
+}
+
+function hasIndexedNote(v: string | null): boolean {
+  const t = (v ?? "").trim();
+  return t.length > 0 && !/^(no|not)/i.test(t);
 }
 
 function tally<T>(items: T[], key: (t: T) => string | null): { label: string; count: number }[] {
@@ -45,7 +60,10 @@ export default async function BacklinksPage({ searchParams }: { searchParams: Pr
 
   // ---- Analytics ----
   const total = rows.length;
-  const indexedCount = rows.filter((r) => isIndexed(r.indexed)).length;
+  const indexedCount = rows.filter((r) => isIndexed(r.status)).length;
+  // Rows the two columns disagree about — a data-entry gap in the sheet, worth showing
+  // rather than letting it move a headline number.
+  const noteMismatch = rows.filter((r) => isIndexed(r.status) !== hasIndexedNote(r.indexed)).length;
   const sources = new Set(rows.map((r) => r.source_site).filter(Boolean));
   const byStatus = tally(rows, (r) => r.status);
   const byDate = tally(rows, (r) => r.date).sort((a, b) => a.label.localeCompare(b.label)); // chronological
@@ -63,7 +81,11 @@ export default async function BacklinksPage({ searchParams }: { searchParams: Pr
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <StatCard label="Total backlinks" value={String(total)} />
-        <StatCard label="Indexed" value={total ? `${indexedCount} (${Math.round((indexedCount / total) * 100)}%)` : "—"} />
+        <StatCard
+          label="Indexed"
+          value={total ? `${indexedCount} (${Math.round((indexedCount / total) * 100)}%)` : "—"}
+          sub={noteMismatch ? `${noteMismatch} row${noteMismatch === 1 ? "" : "s"}: sheet's "indexed" note disagrees with status` : undefined}
+        />
         <StatCard label="Source domains" value={String(sources.size)} />
         <StatCard label="Latest batch" value={latest} />
       </div>

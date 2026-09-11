@@ -10,18 +10,20 @@ import type { SheetBacklink } from "./parse-sheet";
  *
  * Every known site gets a bucket — including empty ones — so the caller clears a
  * site whose links were removed from the sheet instead of leaving them stale.
+ *
+ * A row whose target matches no known site is NOT filed under some default site.
+ * That behaviour is how 40 .org links were once counted as .com backlinks, inflating
+ * a client-facing total from 159 to 199 with no visible sign anything was wrong.
+ * Unroutable rows come back to the caller instead, to be reported and skipped:
+ * under-reporting is visible and correctable, mis-attribution is neither.
  */
 export function routeBacklinksBySite(
   rows: SheetBacklink[],
   sites: Array<{ id: string; domain: string }>,
-  fallbackDomain: string,
-): { bySite: Map<string, SheetBacklink[]>; unrouted: number } {
+): { bySite: Map<string, SheetBacklink[]>; unrouted: SheetBacklink[] } {
   const byDomain = new Map(sites.map((s) => [s.domain.toLowerCase(), s.id]));
-  const fallbackId = byDomain.get(fallbackDomain.toLowerCase());
-  if (!fallbackId) throw new Error(`Fallback site ${fallbackDomain} is not in the sites list`);
-
   const bySite = new Map<string, SheetBacklink[]>(sites.map((s) => [s.id, []]));
-  let unrouted = 0;
+  const unrouted: SheetBacklink[] = [];
 
   for (const row of rows) {
     let id: string | undefined;
@@ -32,9 +34,21 @@ export function routeBacklinksBySite(
     } catch {
       id = undefined;
     }
-    if (!id) { id = fallbackId; unrouted++; }
+    if (!id) {
+      unrouted.push(row);
+      continue;
+    }
     bySite.get(id)!.push(row);
   }
 
   return { bySite, unrouted };
+}
+
+/** Host of a row's target, for reporting which rows couldn't be placed. */
+export function targetHost(row: SheetBacklink): string {
+  try {
+    return new URL(row.target_url).hostname.toLowerCase().replace(/^www\./, "");
+  } catch {
+    return row.target_url?.trim() ? `unparseable (${row.target_url.trim().slice(0, 40)})` : "(blank)";
+  }
 }

@@ -74,15 +74,20 @@ export async function syncBacklinks(
     // Pass the session-based client so the admin's own RLS identity performs the
     // writes — no SUPABASE_SERVICE_ROLE_KEY needed in the Vercel env for this path.
     const supabase = await createServerSupabaseClient();
-    const r = await syncBacklinksFromSheet("gulfrecoverygroup.com", supabase);
+    const r = await syncBacklinksFromSheet(supabase);
     revalidatePath("/backlinks");
     // Show the per-site split: one sheet feeds several sites, so "179 synced" alone
     // hides whether the .org links actually landed on .org.
     const split = Object.entries(r.bySite).filter(([, n]) => n > 0).map(([d, n]) => `${d}: ${n}`).join(", ");
-    const extra = r.unrouted ? ` ${r.unrouted} row(s) had no recognisable target and went to the default site.` : "";
+    // Unrouted rows are skipped, not parked on some default site — say so plainly and
+    // name the targets, because that is the sheet asking to be fixed.
+    const hosts = Object.entries(r.unroutedHosts).map(([h, n]) => `${h} x${n}`).join(", ");
+    const extra = r.unrouted
+      ? ` ${r.unrouted} row(s) SKIPPED — their target matches no tracked site (${hosts}). Fix the sheet's target column and sync again.`
+      : "";
     return {
       ok: true,
-      message: `Synced ${r.synced} backlinks from the sheet${r.date ? ` (latest ${r.date})` : ""}.${split ? ` — ${split}.` : ""}${extra}`,
+      message: `Stored ${r.stored} of ${r.synced} sheet rows${r.date ? ` (latest ${r.date})` : ""}.${split ? ` — ${split}.` : ""}${extra}`,
     };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Sync failed." };
