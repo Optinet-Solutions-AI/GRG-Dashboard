@@ -55,11 +55,10 @@ export function SyncRankings({ lastChecked }: { lastChecked?: string | null }) {
           <span className="text-xs text-slate-500">tracker last checked this site {lastChecked}</span>
         ) : null}
       </div>
-      <p className="mt-2 text-xs text-slate-500">
-        Runs automatically every day at 06:00 UTC. A daily run imports whatever the tracker has finished for the
-        current week; a fresh rank check is queued once the data is about a week old and takes a few hours to
-        complete, so the week fills in over the following runs.
-      </p>
+      {/* The cron fires daily, but what a reader cares about is when their rankings
+          refresh — that is the weekly rank check, Wednesday 06:00 UTC. Saying "every day"
+          here read as "today's numbers are a day old", which was misleading. */}
+      <p className="mt-2 text-xs text-slate-500">Runs automatically every Wednesday at 06:00 UTC.</p>
       {state?.message ? <p className="mt-2 text-sm text-slate-700">{state.message}</p> : null}
       {state?.error ? <p className="mt-2 text-sm text-red-600">{state.error}</p> : null}
     </div>
