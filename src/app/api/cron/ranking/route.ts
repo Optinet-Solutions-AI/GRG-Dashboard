@@ -7,13 +7,19 @@ import { kickPagespeedCapture, type PsiKick } from "@/lib/pagespeed/kick";
 // Ranking automation, end to end. Two halves on purpose:
 //   1. IMPORT — read whatever the tracker has already checked for the current ISO week
 //      and store it authoritatively for that week (cheap, idempotent, self-healing).
-//   2. SWEEP — ask the tracker for a fresh rank check, but only once the data has gone
-//      stale (~6 days). A sweep re-checks every domain in the panel project (~2093
-//      keywords at ~7s each, so hours), which is why it can't fire on every invocation.
+//   2. SWEEP — ask the tracker for a fresh rank check, in its weekly slot: WEDNESDAY
+//      06:00 UTC. A sweep re-checks every domain in the panel project (~2093 keywords at
+//      ~7s each, so hours), which is why it can't fire on every invocation. The rule
+//      compares the tracker's last check against the most recent Wednesday 06:00 rather
+//      than matching on the weekday, so a Wednesday the cron couldn't serve is picked up
+//      on the Thursday instead of waiting a week.
 //
-// The route therefore runs DAILY (vercel.json): each day re-imports the current week, so
-// the grid fills in as a multi-hour sweep progresses, and the sweep itself is queued once
-// a week. A sweep that dies half-way is simply re-queued the next day once it ages out.
+// The route therefore runs DAILY (vercel.json) while the sweep fires weekly: each day
+// re-imports the current week, so the grid fills in over the hours and days a sweep needs
+// to finish, and so a sweep that died half-way is re-queued once it ages out. Making the
+// CRON itself weekly would break that — results would sit unimported until the following
+// Wednesday, and the PageSpeed/SEO jobs that ride this route would stretch to one URL a
+// week and a snapshot up to six days late.
 // Vercel Hobby allows 2 cron jobs per project, both already spoken for, so this route
 // carries both halves rather than adding a third schedule.
 //

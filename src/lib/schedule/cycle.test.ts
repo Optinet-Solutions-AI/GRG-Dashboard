@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { cycleStart, isDueThisCycle } from "./cycle";
+import { cycleStart, isDueThisCycle, weeklyAnchor } from "./cycle";
 
 describe("cycleStart", () => {
   it("maps a day inside the first half of the month back to the 1st", () => {
@@ -57,5 +57,38 @@ describe("isDueThisCycle", () => {
     // A manual run on the 10th satisfies the cycle that began on the 1st.
     expect(isDueThisCycle({ today: "2026-09-12", lastRun: "2026-09-10" }).due).toBe(false);
     expect(isDueThisCycle({ today: "2026-10-01", lastRun: "2026-09-10" }).due).toBe(true);
+  });
+});
+
+describe("weeklyAnchor (the rank sweep's Wednesday 06:00 UTC slot)", () => {
+  const iso = (ms: number) => new Date(ms).toISOString();
+
+  it("returns this week's Wednesday once the hour has passed", () => {
+    // Wednesday 2026-09-16, 09:00Z — the slot opened three hours ago.
+    expect(iso(weeklyAnchor(new Date("2026-09-16T09:00:00Z")))).toBe("2026-09-16T06:00:00.000Z");
+  });
+
+  it("returns last week's Wednesday when the hour hasn't arrived yet", () => {
+    // Wednesday 05:00Z — today's slot is still in the future.
+    expect(iso(weeklyAnchor(new Date("2026-09-16T05:00:00Z")))).toBe("2026-09-09T06:00:00.000Z");
+  });
+
+  it("holds the same anchor for the rest of the week", () => {
+    for (const d of ["2026-09-16T06:00:00Z", "2026-09-18T23:00:00Z", "2026-09-22T05:59:00Z"]) {
+      expect(iso(weeklyAnchor(new Date(d)))).toBe("2026-09-16T06:00:00.000Z");
+    }
+  });
+
+  it("moves on at the next Wednesday", () => {
+    expect(iso(weeklyAnchor(new Date("2026-09-23T06:00:00Z")))).toBe("2026-09-23T06:00:00.000Z");
+  });
+
+  it("crosses a month boundary", () => {
+    expect(iso(weeklyAnchor(new Date("2026-10-02T12:00:00Z")))).toBe("2026-09-30T06:00:00.000Z");
+  });
+
+  it("accepts another weekday/hour", () => {
+    // Monday 08:00 UTC.
+    expect(iso(weeklyAnchor(new Date("2026-09-16T09:00:00Z"), 1, 8))).toBe("2026-09-14T08:00:00.000Z");
   });
 });

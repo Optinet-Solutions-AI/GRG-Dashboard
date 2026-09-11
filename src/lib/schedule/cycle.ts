@@ -31,6 +31,25 @@ export function cycleStart(today: string, anchorDays: number[] = ANCHOR_DAYS): s
   return `${prevYear}-${String(prevMonth).padStart(2, "0")}-${String(last).padStart(2, "0")}`;
 }
 
+/**
+ * The most recent weekly anchor at or before `now` — by default Wednesday 06:00 UTC.
+ *
+ * Used for the rank sweep, which is the expensive job (~2093 keywords, hours) and wants a
+ * fixed weekly slot rather than a rolling "N days since last time". Comparing against the
+ * anchor instead of the weekday means a Wednesday that couldn't run is picked up on the
+ * Thursday, not skipped until the following week.
+ */
+export function weeklyAnchor(now: Date, weekday = 3, hourUtc = 6): number {
+  const anchor = new Date(now);
+  anchor.setUTCHours(hourUtc, 0, 0, 0);
+  // How many days back to the wanted weekday (0 when today IS that weekday).
+  const back = (anchor.getUTCDay() - weekday + 7) % 7;
+  anchor.setUTCDate(anchor.getUTCDate() - back);
+  // Today is the weekday but the hour hasn't arrived yet — the open anchor is last week's.
+  if (anchor.getTime() > now.getTime()) anchor.setUTCDate(anchor.getUTCDate() - 7);
+  return anchor.getTime();
+}
+
 export type DueDecision = { due: boolean; reason: string; cycle: string };
 
 /**

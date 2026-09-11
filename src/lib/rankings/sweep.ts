@@ -8,10 +8,22 @@
 // Pure on purpose: the cron route and the admin button share this one rule.
 
 import { parseCheckedAt } from "./bpn-week";
+import { weeklyAnchor } from "@/lib/schedule/cycle";
 
 export type SweepDecision = { trigger: boolean; reason: string };
 
-/** A week, minus a day of slack so a cron that slips an hour still refreshes. */
+/**
+ * The weekly slot for a fresh rank check: Wednesday 06:00 UTC.
+ *
+ * A fixed anchor rather than "6 days since the last check", so the sweep lands on a
+ * predictable day for reporting. The rule compares the last check against the most recent
+ * anchor, which means a Wednesday the cron couldn't serve is picked up on the Thursday
+ * instead of being skipped until the following week — the daily cron keeps asking.
+ */
+export const SWEEP_WEEKDAY_UTC = 3; // Wednesday
+export const SWEEP_HOUR_UTC = 6;
+
+/** Retained as the ceiling for a tracker that has gone quiet for longer than a week. */
 export const STALE_AFTER_HOURS = 6 * 24;
 
 /**
@@ -37,6 +49,8 @@ export function shouldTriggerSweep(opts: {
   coverage?: number | null;
   coverageFloor?: number;
   coverageRetryAfterHours?: number;
+  sweepWeekday?: number;
+  sweepHourUtc?: number;
 }): SweepDecision {
   const staleAfter = opts.staleAfterHours ?? STALE_AFTER_HOURS;
   const floor = opts.coverageFloor ?? COVERAGE_FLOOR;
@@ -52,6 +66,16 @@ export function shouldTriggerSweep(opts: {
   // A negative age means the panel clock is ahead of ours, not that a check is due.
   if (ageHours < 0) {
     return { trigger: false, reason: "last check is in the future (panel clock skew) — treating as fresh" };
+  }
+  // The weekly slot: due when the last check predates the most recent Wednesday 06:00 UTC.
+  const anchor = weeklyAnchor(opts.now, opts.sweepWeekday ?? SWEEP_WEEKDAY_UTC, opts.sweepHourUtc ?? SWEEP_HOUR_UTC);
+  if (at < anchor) {
+    return {
+      trigger: true,
+      reason:
+        `no rank check since the weekly slot (${new Date(anchor).toISOString().slice(0, 16)}Z) — ` +
+        `last was ${Math.round(ageHours)}h ago`,
+    };
   }
   if (ageHours >= staleAfter) {
     return {
@@ -74,6 +98,8 @@ export function shouldTriggerSweep(opts: {
       : "";
   return {
     trigger: false,
-    reason: `last check was ${Math.round(ageHours)}h ago — still fresh (stale after ${staleAfter}h)${thin}`,
+    reason:
+      `already checked since the weekly slot (${new Date(anchor).toISOString().slice(0, 16)}Z) — ` +
+      `last was ${Math.round(ageHours)}h ago${thin}`,
   };
 }
