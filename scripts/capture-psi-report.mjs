@@ -13,15 +13,41 @@ function todayLocal() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+function readScores(page) {
+  return page.evaluate(() => {
+    const t = document.body.innerText;
+    const pick = (label) => { const m = t.match(new RegExp("(\\d{1,3})\\s+" + label)); return m ? parseInt(m[1], 10) : null; };
+    return { performance: pick("Performance"), accessibility: pick("Accessibility"), bestPractices: pick("Best Practices"), seo: pick("SEO") };
+  });
+}
+
 async function captureReport(page, url, strategy) {
   const target = `https://pagespeed.web.dev/analysis?url=${encodeURIComponent(url)}&form_factor=${strategy}`;
   await page.goto(target, { waitUntil: "domcontentloaded", timeout: 60000 });
   // Dismiss the cookie banner if present.
   try { await page.getByRole("button", { name: /Ok, Got it/i }).click({ timeout: 4000 }); } catch { /* none */ }
-  // "Captured at …" only appears once the live audit finishes.
-  // NOTE: 3rd arg is options; the 2nd (arg) must be present or the timeout is ignored (defaults to 30s).
-  await page.waitForFunction(() => /Captured at/i.test(document.body.innerText), null, { timeout: 150000 });
-  await page.waitForTimeout(2500);
+  // Wait for the thing we actually need — a scrapeable score beside the Performance gauge.
+  //
+  // This used to wait for the text "Captured at", which Google's UI no longer prints: the
+  // header now reads "Report from <time>" and appears within seconds, long before the audit
+  // finishes. Every capture therefore timed out at 150s and the run stored blank rows
+  // instead of screenshots. Waiting on the report's own numbers cannot drift like a caption
+  // can — if they are on screen, both the screenshot and the scrape are valid.
+  //
+  // NOTE: 3rd arg is options; the 2nd (arg) must be present or the timeout is ignored.
+  await page.waitForFunction(() => /\d{1,3}\s+Performance/.test(document.body.innerText), null, { timeout: 300000 });
+  // The gauges blank out for a moment while the panel re-renders, so read twice a second
+  // apart and only continue once the two agree — otherwise the scrape lands in that gap and
+  // returns nulls for a report that is plainly on screen.
+  let stable = null;
+  for (let i = 0; i < 40; i++) {
+    const a = await readScores(page);
+    await page.waitForTimeout(1000);
+    const b = await readScores(page);
+    if (a.performance != null && a.performance === b.performance) { stable = b; break; }
+  }
+  if (!stable) throw new Error("scores never settled");
+  await page.waitForTimeout(1500);
   // Cut cleanly just below the 4 category gauges, not through the big gauge below them.
   const cutY = await page.evaluate(() => {
     const labels = ["Performance", "Accessibility", "Best Practices", "SEO"];
@@ -35,11 +61,7 @@ async function captureReport(page, url, strategy) {
     return maxBottom;
   });
   const height = cutY > 200 ? Math.min(Math.ceil(cutY + 28), 1400) : 540;
-  const scores = await page.evaluate(() => {
-    const t = document.body.innerText;
-    const pick = (label) => { const m = t.match(new RegExp("(\\d{1,3})\\s+" + label)); return m ? parseInt(m[1], 10) : null; };
-    return { performance: pick("Performance"), accessibility: pick("Accessibility"), bestPractices: pick("Best Practices"), seo: pick("SEO") };
-  });
+  const scores = stable;
   const buffer = await page.screenshot({ clip: { x: 0, y: 0, width: 1000, height }, type: "png" });
   return { buffer, scores };
 }
@@ -80,9 +102,30 @@ async function main() {
         console.log("FAILED:", e.message);
       }
     }
-    // Attach screenshots to today's entry (created by the score cron); leaves scores untouched.
-    const { error: upErr } = await db.from("pagespeed_entries").insert(patch);
-    if (upErr) console.log("DB insert failed:", upErr.message);
+    // Nothing captured? Store nothing. The old code inserted `patch` regardless, so a run
+    // where every capture failed left one blank card per site on the dashboard — which is
+    // exactly what 2026-09-16 looked like before this fix.
+    const captured = Object.keys(patch).some((k) => k.endsWith("_screenshot_path"));
+    if (!captured) {
+      console.log(`  nothing captured for ${u.url} — storing nothing`);
+      continue;
+    }
+
+    // Attach to today's existing entry (the score cron may have made one) rather than
+    // adding a second card for the same day. Scores come from the same report as the
+    // screenshot, so the numbers on the card always match the image beside them.
+    const { data: existing } = await db
+      .from("pagespeed_entries")
+      .select("id")
+      .eq("pagespeed_url_id", u.id)
+      .eq("date", date)
+      .order("created_at", { ascending: false })
+      .limit(1);
+    const row = (existing ?? [])[0];
+    const { error: upErr } = row
+      ? await db.from("pagespeed_entries").update(patch).eq("id", row.id)
+      : await db.from("pagespeed_entries").insert(patch);
+    if (upErr) console.log("DB write failed:", upErr.message);
     else done++;
   }
 
