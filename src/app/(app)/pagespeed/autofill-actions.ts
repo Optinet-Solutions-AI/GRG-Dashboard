@@ -3,7 +3,6 @@
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { storePsiScreenshot } from "@/lib/pagespeed/screenshot";
 import { pageSpeedInsights } from "@/lib/sources/pagespeed-insights";
 
 function todayLocal(): string {
@@ -37,10 +36,6 @@ export async function autofillPagespeed(
   }
 
   const date = todayLocal();
-  const [mShot, dShot] = await Promise.all([
-    storePsiScreenshot(supabase, { urlId: pagespeedUrlId, strategy: "mobile", date, dataUrl: m?.screenshot }),
-    storePsiScreenshot(supabase, { urlId: pagespeedUrlId, strategy: "desktop", date, dataUrl: d?.screenshot }),
-  ]);
   const record: Record<string, string | number | null> = {
     pagespeed_url_id: pagespeedUrlId,
     date,
@@ -52,12 +47,9 @@ export async function autofillPagespeed(
     desktop_accessibility: d?.accessibility ?? null,
     desktop_best_practices: d?.bestPractices ?? null,
     desktop_seo: d?.seo ?? null,
-    mobile_screenshot_path: mShot,
-    desktop_screenshot_path: dShot,
   };
-  // PSI's own page screenshot travels with the scores. The proof shot of the PageSpeed
-  // Insights REPORT page (the gauges) still comes from scripts/capture-psi-report.mjs,
-  // which needs a real browser — it overwrites these when it runs.
+  // Scores only. The proof screenshot is the PageSpeed Insights REPORT page (the gauges),
+  // captured by scripts/capture-psi-report.mjs, which needs a real browser.
 
   const { error: e2 } = await supabase.from("pagespeed_entries").insert(record);
   if (e2) return { error: e2.message };

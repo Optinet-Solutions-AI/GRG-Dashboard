@@ -3,7 +3,8 @@
 // This needs a real browser, so it runs here (not on the Vercel cron). Scores are still
 // refreshed automatically by the cron via the PSI API; this adds the visual proof.
 //
-//   node --env-file=.env scripts/capture-psi-report.mjs
+//   node --env-file=.env scripts/capture-psi-report.mjs            all active URLs
+//   node --env-file=.env scripts/capture-psi-report.mjs .com .net   only matching URLs
 //
 import { chromium } from "playwright";
 import { createClient } from "@supabase/supabase-js";
@@ -72,9 +73,15 @@ async function main() {
   if (!url || !key) throw new Error("Missing Supabase env vars.");
   const db = createClient(url, key, { auth: { persistSession: false } });
 
-  const { data: urls, error } = await db.from("pagespeed_urls").select("id, url").eq("active", true).order("sort_order");
+  const { data: allUrls, error } = await db.from("pagespeed_urls").select("id, url").eq("active", true).order("sort_order");
   if (error) throw new Error(error.message);
-  if (!urls?.length) { console.log("No active PageSpeed URLs."); return; }
+  // Optional filters: re-capturing one site shouldn't cost a live audit on the other two,
+  // and pagespeed.web.dev throttles repeated audits from one IP.
+  const filters = process.argv.slice(2).map((a) => a.toLowerCase());
+  const urls = filters.length
+    ? (allUrls ?? []).filter((u) => filters.some((f) => u.url.toLowerCase().includes(f)))
+    : (allUrls ?? []);
+  if (!urls.length) { console.log(filters.length ? `No active URL matches ${filters.join(", ")}.` : "No active PageSpeed URLs."); return; }
 
   const date = todayLocal();
   const browser = await chromium.launch();

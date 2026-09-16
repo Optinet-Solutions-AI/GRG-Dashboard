@@ -30,13 +30,13 @@ import { kickPagespeedCapture, type PsiKick } from "@/lib/pagespeed/kick";
 //   GET /api/cron/ranking?sweep=1            queue a sweep even if the data looks fresh
 //   GET /api/cron/ranking?seo=0               skip the SEO analysis half
 //   GET /api/cron/ranking?seo=1               score now, ignoring the 15-day rhythm
-//   GET /api/cron/ranking?psi=0               don't kick the PageSpeed capture
+//   GET /api/cron/ranking?psi=1               kick a scores-only PageSpeed capture
 //
 // It also carries two secondary jobs, for the same reason it carries the sweep: Hobby gives
 // a project two cron slots and both are spoken for.
 //   - the computed SEO score for .org/.net, which stores on the 1st and the 16th only —
 //     the same ~15-day rhythm as the PageSpeed snapshots (see /api/cron/seo-analysis)
-//   - a daily kick of the PageSpeed capture, which runs as its own invocation because one
+//   - (opt-in, ?psi=1) a PageSpeed capture, which runs as its own invocation because one
 //     PSI pass needs ~50s of a 60s budget
 // Both are isolated: if either throws, the ranking result still returns, because a ranking
 // import must not fail over a secondary job.
@@ -69,9 +69,14 @@ export async function GET(request: Request) {
       }
     }
 
-    // Skipped on a dry run: there is no way to preview a capture without spending it.
+    // Off by default. A capture made here carries scores but no screenshot, and the
+    // screenshot on a PageSpeed card is the PageSpeed Insights REPORT — the gauges — which
+    // is the proof of the score. Those come from scripts/capture-psi-report.mjs (a real
+    // browser, so not on Vercel), which captures scores and gauges together on the 1st and
+    // the 16th. A daily score-only row would just add cards that can never have an image.
+    // ?psi=1 still kicks one by hand.
     let pagespeed: PsiKick | { error: string } | null = null;
-    if (!dryRun && url.searchParams.get("psi") !== "0") {
+    if (!dryRun && url.searchParams.get("psi") === "1") {
       try {
         pagespeed = await kickPagespeedCapture();
       } catch (e) {

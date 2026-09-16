@@ -3,12 +3,12 @@ import { createClient } from "@supabase/supabase-js";
 import { pageSpeedInsights } from "@/lib/sources/pagespeed-insights";
 import { mapWithLimit } from "@/lib/concurrency";
 import { pendingPagespeedUrls } from "@/lib/sources/pending-urls";
-import { storePsiScreenshot } from "@/lib/pagespeed/screenshot";
 import { cycleStart } from "@/lib/schedule/cycle";
 
 // Scheduled/triggered PageSpeed refresh for the active URLs.
-// Scores plus PSI's own page screenshot. The richer proof shot of the PSI report page
-// (with the gauges) is captured separately
+// Scores only. The screenshot on a card is the PageSpeed Insights REPORT — the gauges —
+// which is proof of the score; a render of the site itself proves nothing and was rejected.
+// It is captured separately
 // by scripts/capture-psi-report.mjs (needs a real browser, which the cron can't run).
 //
 // A PSI pass with all four categories costs ~20-25s per URL. This route used to loop
@@ -37,11 +37,6 @@ export const maxDuration = 60;
 // only way to widen this meaningfully.
 const DEFAULT_BATCH = 1;
 const SOFT_DEADLINE_MS = 25_000;
-// A PSI pass alone measured 50.0s of the 60s function limit, so storing the screenshots it
-// returns can tip the invocation over — it did, once, as FUNCTION_INVOCATION_TIMEOUT. The
-// scores are the point of this route; the image is a bonus. Past this mark we skip the
-// upload and keep the scores rather than losing both.
-const SCREENSHOT_DEADLINE_MS = 45_000;
 
 function todayLocal(): string {
   const d = new Date();
@@ -113,16 +108,6 @@ export async function GET(request: Request) {
       const d = results.find((r) => r.strategy === "desktop");
       if (m?.score == null && d?.score == null) return { url: u.url, written: false };
 
-      // PSI hands back a rendered screenshot alongside the scores; store it so an
-      // automated capture is never imageless. The richer report screenshot (the gauges)
-      // still overwrites this when scripts/capture-psi-report.mjs runs.
-      const elapsed = Date.now() - startedAt;
-      const [mShot, dShot] = elapsed > SCREENSHOT_DEADLINE_MS
-        ? [null, null]
-        : await Promise.all([
-            storePsiScreenshot(db, { urlId: u.id, strategy: "mobile", date, dataUrl: m?.screenshot }),
-            storePsiScreenshot(db, { urlId: u.id, strategy: "desktop", date, dataUrl: d?.screenshot }),
-          ]);
       // INSERT, not upsert: migration 0016 deliberately dropped the
       // (pagespeed_url_id, date) unique constraint so each run is its own historical
       // record. The stale onConflict here failed every write, and the old loop
@@ -132,10 +117,9 @@ export async function GET(request: Request) {
         pagespeed_url_id: u.id, date,
         mobile_score: m?.score ?? null, mobile_accessibility: m?.accessibility ?? null, mobile_best_practices: m?.bestPractices ?? null, mobile_seo: m?.seo ?? null,
         desktop_score: d?.score ?? null, desktop_accessibility: d?.accessibility ?? null, desktop_best_practices: d?.bestPractices ?? null, desktop_seo: d?.seo ?? null,
-        mobile_screenshot_path: mShot, desktop_screenshot_path: dShot,
       });
       if (error) throw new Error(`${u.url}: ${error.message}`);
-      return { url: u.url, written: true, shots: { mobile: Boolean(mShot), desktop: Boolean(dShot), skipped: elapsed > SCREENSHOT_DEADLINE_MS } };
+      return { url: u.url, written: true };
     },
     () => Date.now() - startedAt > SOFT_DEADLINE_MS,
   );
