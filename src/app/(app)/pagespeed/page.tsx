@@ -1,6 +1,7 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { resolveSiteId } from "@/lib/sites";
 import { signScreenshots } from "@/lib/storage";
+import { isReportShot } from "@/lib/pagespeed/screenshot";
 import { getCurrentRole, isAdminRole } from "@/lib/auth";
 import { addPagespeedPeriod, updatePagespeedEntry } from "./actions";
 import { AddPagespeedPeriod } from "@/components/entry/AddPagespeedPeriod";
@@ -48,13 +49,18 @@ function DeviceReport({
   );
 }
 
-function ReportShot({ label, src }: { label: string; src?: string }) {
+function ReportShot({ label, src, report }: { label: string; src?: string; report: boolean }) {
   if (!src) return null;
+  // Two different images can live here: the PSI report page with its gauges (captured by
+  // scripts/capture-psi-report.mjs) or the page render PSI returns with the scores. Caption
+  // each for what it is — a page render presented as "the PageSpeed Insights report" would
+  // be claiming proof it doesn't carry.
+  const what = report ? "PageSpeed Insights report" : "page screenshot from PageSpeed Insights";
   return (
     <figure className="overflow-hidden rounded-xl border border-slate-200 shadow-sm">
-      <figcaption className="bg-slate-50 px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">{label} — PageSpeed Insights report</figcaption>
+      <figcaption className="bg-slate-50 px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">{label} — {what}</figcaption>
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={src} alt={`${label} PageSpeed Insights report`} className="w-full" />
+      <img src={src} alt={`${label} ${what}`} className="w-full" />
     </figure>
   );
 }
@@ -140,8 +146,8 @@ export default async function PageSpeedPage({ searchParams }: { searchParams: Pr
           </div>
           {(r.mobile_screenshot_path || r.desktop_screenshot_path) ? (
             <div className="mt-4 grid gap-4 sm:grid-cols-2">
-              <ReportShot label="Mobile" src={r.mobile_screenshot_path ? signed.get(r.mobile_screenshot_path) : undefined} />
-              <ReportShot label="Desktop" src={r.desktop_screenshot_path ? signed.get(r.desktop_screenshot_path) : undefined} />
+              <ReportShot label="Mobile" src={r.mobile_screenshot_path ? signed.get(r.mobile_screenshot_path) : undefined} report={isReportShot(r.mobile_screenshot_path)} />
+              <ReportShot label="Desktop" src={r.desktop_screenshot_path ? signed.get(r.desktop_screenshot_path) : undefined} report={isReportShot(r.desktop_screenshot_path)} />
             </div>
           ) : null}
         </div>

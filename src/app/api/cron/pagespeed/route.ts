@@ -3,10 +3,12 @@ import { createClient } from "@supabase/supabase-js";
 import { pageSpeedInsights } from "@/lib/sources/pagespeed-insights";
 import { mapWithLimit } from "@/lib/concurrency";
 import { pendingPagespeedUrls } from "@/lib/sources/pending-urls";
+import { storePsiScreenshot } from "@/lib/pagespeed/screenshot";
 import { cycleStart } from "@/lib/schedule/cycle";
 
 // Scheduled/triggered PageSpeed refresh for the active URLs.
-// Scores only — the proof screenshot of the real PSI report is captured separately
+// Scores plus PSI's own page screenshot. The richer proof shot of the PSI report page
+// (with the gauges) is captured separately
 // by scripts/capture-psi-report.mjs (needs a real browser, which the cron can't run).
 //
 // A PSI pass with all four categories costs ~20-25s per URL. This route used to loop
@@ -100,6 +102,14 @@ export async function GET(request: Request) {
       const m = results.find((r) => r.strategy === "mobile");
       const d = results.find((r) => r.strategy === "desktop");
       if (m?.score == null && d?.score == null) return { url: u.url, written: false };
+
+      // PSI hands back a rendered screenshot alongside the scores; store it so an
+      // automated capture is never imageless. The richer report screenshot (the gauges)
+      // still overwrites this when scripts/capture-psi-report.mjs runs.
+      const [mShot, dShot] = await Promise.all([
+        storePsiScreenshot(db, { urlId: u.id, strategy: "mobile", date, dataUrl: m?.screenshot }),
+        storePsiScreenshot(db, { urlId: u.id, strategy: "desktop", date, dataUrl: d?.screenshot }),
+      ]);
       // INSERT, not upsert: migration 0016 deliberately dropped the
       // (pagespeed_url_id, date) unique constraint so each run is its own historical
       // record. The stale onConflict here failed every write, and the old loop
@@ -109,6 +119,7 @@ export async function GET(request: Request) {
         pagespeed_url_id: u.id, date,
         mobile_score: m?.score ?? null, mobile_accessibility: m?.accessibility ?? null, mobile_best_practices: m?.bestPractices ?? null, mobile_seo: m?.seo ?? null,
         desktop_score: d?.score ?? null, desktop_accessibility: d?.accessibility ?? null, desktop_best_practices: d?.bestPractices ?? null, desktop_seo: d?.seo ?? null,
+        mobile_screenshot_path: mShot, desktop_screenshot_path: dShot,
       });
       if (error) throw new Error(`${u.url}: ${error.message}`);
       return { url: u.url, written: true };
