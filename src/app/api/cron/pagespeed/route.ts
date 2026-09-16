@@ -19,6 +19,9 @@ import { cycleStart } from "@/lib/schedule/cycle";
 // those with no entry for today, so calling it again resumes exactly where it left
 // off instead of duplicating a day's captures (?force=1 to capture again anyway).
 //   ?probe=1    report what would run, without spending ~25s per URL
+//   ?url=<text> capture only URLs containing this text (e.g. ?url=.net) — the selector
+//               otherwise always picks the most starved, which makes one specific site
+//               impossible to target when they are all equally fresh
 //
 // Captures are per 15-day cycle (see lib/schedule/cycle.ts): each tracked URL gets one
 // snapshot per cycle, the most starved URL first, spilling over to following days until
@@ -87,12 +90,14 @@ export async function GET(request: Request) {
     if (lastCaptured.get(row.pagespeed_url_id) == null) lastCaptured.set(row.pagespeed_url_id, row.date);
   }
 
-  const todo = pendingPagespeedUrls(all, doneThisCycle, batch, lastCaptured);
+  const only = (params.get("url") ?? "").trim().toLowerCase();
+  const candidates = only ? all.filter((u) => u.url.toLowerCase().includes(only)) : all;
+  const todo = pendingPagespeedUrls(candidates, doneThisCycle, batch, lastCaptured);
   const remainingBefore = all.length - new Set(doneThisCycle.map((d) => d.pagespeed_url_id)).size;
 
   if (params.get("probe") === "1") {
     return NextResponse.json({
-      ok: true, probe: true, date, batch, cycle,
+      ok: true, probe: true, date, batch, cycle, only: only || null,
       tracked: all.length, doneThisCycle: new Set(doneThisCycle.map((d) => d.pagespeed_url_id)).size,
       wouldRefresh: todo.map((u) => u.url), remaining: remainingBefore,
       lastCaptured: Object.fromEntries(all.map((u) => [u.url, lastCaptured.get(u.id) ?? "never"])),
@@ -152,6 +157,7 @@ export async function GET(request: Request) {
     failed,
     remaining,
     complete: remaining === 0,
+    captures: outcomes.flatMap((o) => (o.status === "done" ? [o.value] : [])),
     tookMs: Date.now() - startedAt,
   });
 }
