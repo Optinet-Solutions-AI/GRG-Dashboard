@@ -36,7 +36,21 @@ async function captureReport(page, url, strategy) {
   // can — if they are on screen, both the screenshot and the scrape are valid.
   //
   // NOTE: 3rd arg is options; the 2nd (arg) must be present or the timeout is ignored.
-  await page.waitForFunction(() => /\d{1,3}\s+Performance/.test(document.body.innerText), null, { timeout: 300000 });
+  //
+  // Stop early when PSI reports it couldn't run, instead of waiting out the full timeout.
+  // Google answers a fetch failure with "Unable to resolve <url>" and leaves the page
+  // sitting there — indistinguishable from a slow audit unless you look for it, which cost
+  // five minutes per attempt on .com/desktop.
+  const outcome = await page.waitForFunction(() => {
+    const t = document.body.innerText;
+    if (/\d{1,3}\s+Performance/.test(t)) return "ready";
+    // Only messages that mean the run itself failed. "Enter a valid URL" is NOT one of
+    // them — it is the input's own placeholder and sits on the page while a perfectly
+    // healthy audit is still running, so matching it aborted good captures.
+    const err = t.match(/Unable to resolve[^.]*|Lighthouse returned error[^.]*/i);
+    return err ? `error:${err[0].slice(0, 120)}` : false;
+  }, null, { timeout: 300000 }).then((h) => h.jsonValue());
+  if (outcome !== "ready") throw new Error(outcome.replace(/^error:/, "PSI could not analyse the page — "));
   // The gauges blank out for a moment while the panel re-renders, so read twice a second
   // apart and only continue once the two agree — otherwise the scrape lands in that gap and
   // returns nulls for a report that is plainly on screen.
