@@ -34,6 +34,11 @@ export const maxDuration = 60;
 // only way to widen this meaningfully.
 const DEFAULT_BATCH = 1;
 const SOFT_DEADLINE_MS = 25_000;
+// A PSI pass alone measured 50.0s of the 60s function limit, so storing the screenshots it
+// returns can tip the invocation over — it did, once, as FUNCTION_INVOCATION_TIMEOUT. The
+// scores are the point of this route; the image is a bonus. Past this mark we skip the
+// upload and keep the scores rather than losing both.
+const SCREENSHOT_DEADLINE_MS = 45_000;
 
 function todayLocal(): string {
   const d = new Date();
@@ -106,10 +111,13 @@ export async function GET(request: Request) {
       // PSI hands back a rendered screenshot alongside the scores; store it so an
       // automated capture is never imageless. The richer report screenshot (the gauges)
       // still overwrites this when scripts/capture-psi-report.mjs runs.
-      const [mShot, dShot] = await Promise.all([
-        storePsiScreenshot(db, { urlId: u.id, strategy: "mobile", date, dataUrl: m?.screenshot }),
-        storePsiScreenshot(db, { urlId: u.id, strategy: "desktop", date, dataUrl: d?.screenshot }),
-      ]);
+      const elapsed = Date.now() - startedAt;
+      const [mShot, dShot] = elapsed > SCREENSHOT_DEADLINE_MS
+        ? [null, null]
+        : await Promise.all([
+            storePsiScreenshot(db, { urlId: u.id, strategy: "mobile", date, dataUrl: m?.screenshot }),
+            storePsiScreenshot(db, { urlId: u.id, strategy: "desktop", date, dataUrl: d?.screenshot }),
+          ]);
       // INSERT, not upsert: migration 0016 deliberately dropped the
       // (pagespeed_url_id, date) unique constraint so each run is its own historical
       // record. The stale onConflict here failed every write, and the old loop
@@ -122,7 +130,7 @@ export async function GET(request: Request) {
         mobile_screenshot_path: mShot, desktop_screenshot_path: dShot,
       });
       if (error) throw new Error(`${u.url}: ${error.message}`);
-      return { url: u.url, written: true };
+      return { url: u.url, written: true, shots: { mobile: Boolean(mShot), desktop: Boolean(dShot), skipped: elapsed > SCREENSHOT_DEADLINE_MS } };
     },
     () => Date.now() - startedAt > SOFT_DEADLINE_MS,
   );
