@@ -1,23 +1,32 @@
 // English translations for the tracked Arabic ranking keywords.
+//
+// Corrected 2026-09-25 against the client's own reference translations:
+//   تجميد حساب التداول   Freezing a trading account  -> Frozen trading account
+//   مشاكل سحب التداول    Trading withdrawal problems -> Trading withdrawal issues
+//   استرجاع أموال الفوركس Recovering forex funds      -> Recovering Forex funds
+// and one that was not merely loose but backwards: محامي شركات التداول read as
+// "Lawyer for trading companies", i.e. counsel acting FOR the brokers, when the searcher
+// is looking for someone to act against them. The Arabic is a neutral noun phrase, so the
+// label is now "Trading company lawyer".
 // Keyed on the exact `keywords.text` strings stored in the DB so lookups match 1:1.
 // Unknown keywords fall back to "" (the English cell renders empty) — safe by design.
 const KEYWORD_EN: Record<string, string> = {
   "إغلاق صفقات التداول": "Closing trading positions",
   "احتيال منصات التداول": "Trading platform fraud",
   "استرجاع أموال التداول": "Recovering trading funds",
-  "استرجاع أموال الفوركس": "Recovering forex funds",
+  "استرجاع أموال الفوركس": "Recovering Forex funds",
   "استرداد خسائر التداول": "Recovering trading losses",
   "استشارة لاسترداد الأموال": "Fund recovery consultation",
   "التلاعب بصفقات التداول": "Manipulating trading positions",
-  "تجميد حساب التداول": "Freezing a trading account",
+  "تجميد حساب التداول": "Frozen trading account",
   "تصفية حساب التداول": "Liquidating a trading account",
   "شكوى ضد شركة تداول": "Complaint against a trading company",
   "شركة تداول مرخصة": "Licensed trading company",
   "منصة تداول مرخصة": "Licensed trading platform",
   "علامات نصب التداول": "Signs of a trading scam",
   "عمولة سحب التداول": "Trading withdrawal commission",
-  "محامي شركات التداول": "Lawyer for trading companies",
-  "مشاكل سحب التداول": "Trading withdrawal problems",
+  "محامي شركات التداول": "Trading company lawyer",
+  "مشاكل سحب التداول": "Trading withdrawal issues",
   "وسيط تداول لا يرد": "Unresponsive trading broker",
 
   // --- Country-specific keywords (added 2026-07-14). Keyed on exact Ahrefs text (typos incl.). ---
