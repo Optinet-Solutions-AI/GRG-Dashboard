@@ -66,10 +66,13 @@ export default async function BacklinksPage({ searchParams }: { searchParams: Pr
   const noteMismatch = rows.filter((r) => isIndexed(r.status) !== hasIndexedNote(r.indexed)).length;
   const sources = new Set(rows.map((r) => r.source_site).filter(Boolean));
   const byStatus = tally(rows, (r) => r.status);
-  const byDate = tally(rows, (r) => r.date).sort((a, b) => a.label.localeCompare(b.label)); // chronological
+  const byDate = tally(rows, (r) => r.date).sort((a, b) => b.label.localeCompare(a.label)); // newest first
   const topSources = tally(rows, (r) => r.source_site).slice(0, 8);
   const topTargets = tally(rows, (r) => (r.target_url ? r.target_url.replace(/^https?:\/\//, "") : null)).slice(0, 8);
-  const latest = byDate.at(-1)?.label ?? "—";
+  // Taken from the dates themselves, not from byDate's order: it used to read the last
+  // element of a chronological list, so flipping that list to newest-first would have
+  // quietly turned the "Latest batch" card into the OLDEST batch.
+  const latest = rows.length ? [...rows.map((r) => r.date)].sort().at(-1)! : "—";
 
   return (
     <div className="space-y-5">
