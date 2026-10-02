@@ -5,9 +5,11 @@ import { getCurrentRole, isAdminRole } from "@/lib/auth";
 import { ImportRankings } from "@/components/ranking/ImportRankings";
 import { SyncRankings } from "@/components/ranking/SyncRankings";
 import { createBpnClient } from "@/lib/rankings/bpn-client";
+import { LanguageToggle, parseGridLanguage } from "@/components/ranking/LanguageToggle";
 
-export default async function RankingPage({ searchParams }: { searchParams: Promise<{ site?: string }> }) {
-  const { site } = await searchParams;
+export default async function RankingPage({ searchParams }: { searchParams: Promise<{ site?: string; lang?: string }> }) {
+  const { site, lang } = await searchParams;
+  const language = parseGridLanguage(lang);
 
   const supabase = await createServerSupabaseClient();
   const { data: sites } = await supabase.from("sites").select("id, display_name, domain").order("sort_order");
@@ -16,9 +18,22 @@ export default async function RankingPage({ searchParams }: { searchParams: Prom
   if (!selected) return <p className="text-sm text-slate-500">No sites configured yet.</p>;
 
   // Single round-trip for the most recent ~6 months of weeks (was one RPC per week).
-  const weekly = await getRankingGridByWeek(selected.id, 26); // newest first
-  const weeks = weekly.map((w) => w.week);
+  const weeklyAll = await getRankingGridByWeek(selected.id, 26); // newest first
   const volumes = await getKeywordVolumes();
+
+  // Split the grid by keyword language. Filtering here rather than inside ranking_grid_multi
+  // keeps that function untouched — recreating it is what once broke the entire grid, since
+  // a set-returning function's row type is checked at call time.
+  const { data: kwRows } = await supabase.from("keywords").select("text, language");
+  const languageOf = new Map((kwRows ?? []).map((k) => [String(k.text).trim(), String(k.language)]));
+  const inLanguage = (keyword: string) => (languageOf.get(keyword.trim()) ?? "ar") === language;
+  const counts = { ar: 0, en: 0 } as Record<"ar" | "en", number>;
+  for (const k of kwRows ?? []) counts[String(k.language) === "en" ? "en" : "ar"]++;
+
+  const weekly = weeklyAll
+    .map(({ week, rows }) => ({ week, rows: rows.filter((r) => inLanguage(r.keyword)) }))
+    .filter(({ rows }) => rows.length > 0);
+  const weeks = weekly.map((w) => w.week);
 
   // Which markets each keyword targets, gathered across every week on the page. A single
   // week can't answer this: a pair the sweep failed to check is simply absent, which
@@ -50,7 +65,10 @@ export default async function RankingPage({ searchParams }: { searchParams: Prom
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-bold">Ranking — {selected.display_name}</h1>
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="text-xl font-bold">Ranking — {selected.display_name}</h1>
+          <LanguageToggle site={site} current={language} counts={counts} />
+        </div>
         <span className="text-xs text-slate-500">{weeks.length} week{weeks.length === 1 ? "" : "s"} tracked · newest on top</span>
       </div>
       <p className="text-xs text-slate-500">
@@ -75,7 +93,17 @@ export default async function RankingPage({ searchParams }: { searchParams: Prom
       ) : null}
 
       {weeks.length === 0 ? (
-        <p className="text-sm text-slate-500">No ranking data yet{isAdmin ? " — import an Ahrefs export above." : "."}</p>
+        language === "en" ? (
+          <div className="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center">
+            <p className="text-sm font-medium text-slate-700">No English keywords are being tracked yet.</p>
+            <p className="mx-auto mt-1 max-w-xl text-sm text-slate-500">
+              The English set is still being prepared in the rank tracker. As soon as it returns positions they appear
+              here, in their own grid — the Arabic table above is unaffected either way.
+            </p>
+          </div>
+        ) : (
+          <p className="text-sm text-slate-500">No ranking data yet{isAdmin ? " — import an Ahrefs export above." : "."}</p>
+        )
       ) : (
         <div className="space-y-6 rounded-lg border border-slate-200 bg-slate-50/40 p-3">
           {weekly.map(({ week, rows }, i) => (
