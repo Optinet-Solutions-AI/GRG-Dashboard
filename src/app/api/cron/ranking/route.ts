@@ -30,14 +30,14 @@ import { kickPagespeedCapture, type PsiKick } from "@/lib/pagespeed/kick";
 //   GET /api/cron/ranking?sweep=1            queue a sweep even if the data looks fresh
 //   GET /api/cron/ranking?seo=0               skip the SEO analysis half
 //   GET /api/cron/ranking?seo=1               score now, ignoring the 15-day rhythm
-//   GET /api/cron/ranking?psi=1               kick a scores-only PageSpeed capture
+//   GET /api/cron/ranking?psi=0               skip the PageSpeed capture kick
 //
 // It also carries two secondary jobs, for the same reason it carries the sweep: Hobby gives
 // a project two cron slots and both are spoken for.
 //   - the computed SEO score for .org/.net, which stores on the 1st and the 16th only —
 //     the same ~15-day rhythm as the PageSpeed snapshots (see /api/cron/seo-analysis)
-//   - (opt-in, ?psi=1) a PageSpeed capture, which runs as its own invocation because one
-//     PSI pass needs ~50s of a 60s budget
+//   - a PageSpeed capture, which runs as its own invocation because one PSI pass needs
+//     ~50s of a 60s budget
 // Both are isolated: if either throws, the ranking result still returns, because a ranking
 // import must not fail over a secondary job.
 export const maxDuration = 60;
@@ -69,14 +69,14 @@ export async function GET(request: Request) {
       }
     }
 
-    // Off by default. A capture made here carries scores but no screenshot, and the
-    // screenshot on a PageSpeed card is the PageSpeed Insights REPORT — the gauges — which
-    // is the proof of the score. Those come from scripts/capture-psi-report.mjs (a real
-    // browser, so not on Vercel), which captures scores and gauges together on the 1st and
-    // the 16th. A daily score-only row would just add cards that can never have an image.
-    // ?psi=1 still kicks one by hand.
+    // Back on by default (2026-10-02). It was opt-in because a capture made here carries
+    // scores but no gauges screenshot — but the machine that runs the screenshot script on
+    // a schedule was found to be on a stale copy, so the 10-01 cycle produced no PageSpeed
+    // data at all for any site. A card with scores and no image is worth far more than an
+    // empty one, and the screenshot script updates the same day's row when it does run, so
+    // the gauges still land on that card afterwards. ?psi=0 skips it.
     let pagespeed: PsiKick | { error: string } | null = null;
-    if (!dryRun && url.searchParams.get("psi") === "1") {
+    if (!dryRun && url.searchParams.get("psi") !== "0") {
       try {
         pagespeed = await kickPagespeedCapture();
       } catch (e) {
