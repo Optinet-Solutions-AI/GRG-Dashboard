@@ -57,6 +57,7 @@ export function RankingGrid({
   globalVolume,
   marketVolume,
   trackedMarkets,
+  roster,
 }: {
   rows: GridRow[];
   globalVolume?: Map<string, number>;
@@ -69,12 +70,26 @@ export function RankingGrid({
    * because 17 pairs were missing).
    */
   trackedMarkets?: Map<string, string[]>;
+  /**
+   * The full keyword and market list this week should show, in order — not just the ones
+   * that happen to have a row.
+   *
+   * A keyword the checker skipped has no row, so deriving the table from `rows` dropped it
+   * from the week entirely: country blocks rendered 7, 6 or 9 keywords instead of the 12
+   * that are tracked, which reads as "we stopped tracking these". With the roster supplied,
+   * every tracked keyword holds its place and the gap shows as "Not checked" — missing
+   * data, not a missing keyword. The caller limits the roster to keywords that existed as
+   * of that week, so a keyword added later doesn't appear retroactively in old weeks.
+   */
+  roster?: { keywords: string[]; countries: string[] };
 }) {
-  if (rows.length === 0) return <p className="text-sm text-slate-500">No ranking data for this week.</p>;
+  if (rows.length === 0 && !roster?.keywords.length) {
+    return <p className="text-sm text-slate-500">No ranking data for this week.</p>;
+  }
 
-  const countries = [...new Map(rows.map((r) => [r.country, r.country_sort])).entries()]
+  const countries = roster?.countries ?? [...new Map(rows.map((r) => [r.country, r.country_sort])).entries()]
     .sort((a, b) => a[1] - b[1]).map(([c]) => c);
-  const keywords = [...new Map(rows.map((r) => [r.keyword, r.keyword_sort])).entries()]
+  const keywords = roster?.keywords ?? [...new Map(rows.map((r) => [r.keyword, r.keyword_sort])).entries()]
     .sort((a, b) => a[1] - b[1]).map(([k]) => k);
   const byKey = new Map(rows.map((r) => [`${r.keyword}|${r.country}`, r]));
 

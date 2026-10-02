@@ -155,3 +155,39 @@ describe("RankingGrid missing checks read as text, not punctuation", () => {
     expect(screen.getAllByText("Not checked").length).toBe(1); // QA only, not OM
   });
 });
+
+describe("RankingGrid roster — every tracked keyword holds its place", () => {
+  const SITES = ["SA", "QA"];
+  // Only ONE keyword came back this week; the other two were tracked but skipped.
+  const rows: GridRow[] = [
+    { keyword: "kw-a", keyword_sort: 0, country: "SA", country_sort: 0, position: 4, prev_position: 4 },
+  ];
+  const roster = { keywords: ["kw-a", "kw-b", "kw-c"], countries: SITES };
+  const tracked = new Map([["kw-a", SITES], ["kw-b", SITES], ["kw-c", SITES]]);
+
+  it("renders the skipped keywords instead of dropping them from the week", () => {
+    // The live bug: country blocks showed 7, 6 and 9 keywords instead of the 12 tracked.
+    render(<RankingGrid rows={rows} roster={roster} trackedMarkets={tracked} />);
+    for (const kw of ["kw-a", "kw-b", "kw-c"]) expect(screen.getByText(kw)).toBeTruthy();
+    expect(screen.getByText(/· 3 keywords/)).toBeTruthy();
+  });
+
+  it("marks the skipped ones as not checked, never as a ranking result", () => {
+    render(<RankingGrid rows={rows} roster={roster} trackedMarkets={tracked} />);
+    // kw-a/SA has a real position; the other five cells are missing data.
+    expect(screen.getByText("4")).toBeTruthy();
+    expect(screen.getAllByText("Not checked").length).toBe(5);
+    expect(screen.queryByText("Not in top 100")).toBeNull();
+  });
+
+  it("keeps every market column even when a market returned nothing at all", () => {
+    render(<RankingGrid rows={rows} roster={roster} trackedMarkets={tracked} />);
+    expect(screen.getAllByText(/Qatar|QA/).length).toBeGreaterThan(0);
+  });
+
+  it("still works without a roster, deriving the week from its own rows", () => {
+    render(<RankingGrid rows={rows} trackedMarkets={new Map([["kw-a", ["SA"]]])} />);
+    expect(screen.getByText("kw-a")).toBeTruthy();
+    expect(screen.queryByText("kw-b")).toBeNull();
+  });
+});

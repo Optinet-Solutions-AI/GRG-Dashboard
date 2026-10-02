@@ -35,6 +35,31 @@ export default async function RankingPage({ searchParams }: { searchParams: Prom
     .filter(({ rows }) => rows.length > 0);
   const weeks = weekly.map((w) => w.week);
 
+  // The roster each week should display: every keyword tracked AS OF that week, and every
+  // market, whether or not the checker returned a result. Without it a skipped keyword
+  // simply vanished from the week, so blocks showed 7 or 9 of the 12 that are tracked.
+  // Anchored on the week a keyword first appeared, so one added later is not back-dated
+  // into weeks it never belonged to.
+  const keywordSort = new Map<string, number>();
+  const countrySort = new Map<string, number>();
+  const firstWeek = new Map<string, string>();
+  for (const { week, rows } of weekly) {
+    for (const r of rows) {
+      keywordSort.set(r.keyword, r.keyword_sort);
+      countrySort.set(r.country, r.country_sort);
+      const seen = firstWeek.get(r.keyword);
+      if (!seen || week < seen) firstWeek.set(r.keyword, week);
+    }
+  }
+  const allCountries = [...countrySort.entries()].sort((a, b) => a[1] - b[1]).map(([c]) => c);
+  const rosterFor = (week: string) => ({
+    keywords: [...keywordSort.entries()]
+      .filter(([kw]) => (firstWeek.get(kw) ?? week) <= week)
+      .sort((a, b) => a[1] - b[1])
+      .map(([kw]) => kw),
+    countries: allCountries,
+  });
+
   // Which markets each keyword targets, gathered across every week on the page. A single
   // week can't answer this: a pair the sweep failed to check is simply absent, which
   // would read as "not tracked here" and reshuffle the market groups.
@@ -65,16 +90,15 @@ export default async function RankingPage({ searchParams }: { searchParams: Prom
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-xl font-bold">Ranking — {selected.display_name}</h1>
-          <LanguageToggle site={site} current={language} counts={counts} />
-        </div>
+        <h1 className="text-xl font-bold">Ranking — {selected.display_name}</h1>
         <span className="text-xs text-slate-500">{weeks.length} week{weeks.length === 1 ? "" : "s"} tracked · newest on top</span>
       </div>
       <p className="text-xs text-slate-500">
         <span className="font-semibold text-emerald-600">↑</span> improved · <span className="font-semibold text-rose-500">↓</span> dropped vs previous week · (n) = previous position · <span className="rounded bg-rose-50 px-1 font-semibold text-rose-700 ring-1 ring-rose-200">↓ Lost</span> = was ranked last week, now out of the top 100 · <span className="text-slate-400">Not in top 100</span> = tracked, never ranked · <span className="rounded bg-amber-50 px-1 font-medium text-amber-700 ring-1 ring-amber-200">Not checked</span> = the rank checker never ran this keyword in that market that week — not a ranking result · muted <span className="text-slate-300">·</span> = not tracked in that market. Keywords are grouped by target market.
         {!site ? " Showing the first site — use the selector in the top bar to change site." : ""}
       </p>
+
+      <LanguageToggle site={site} current={language} counts={counts} />
 
       {isAdmin ? (
         <details className="rounded-xl border border-slate-200 bg-white p-4" open={weeks.length === 0}>
@@ -112,7 +136,7 @@ export default async function RankingPage({ searchParams }: { searchParams: Prom
                 <h2 className="text-sm font-semibold text-slate-800">Week of {week}</h2>
                 {i === 0 ? <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">Latest</span> : null}
               </div>
-              <RankingGrid rows={rows} globalVolume={volumes.global} marketVolume={volumes.perMarket} trackedMarkets={trackedMarkets} />
+              <RankingGrid rows={rows} globalVolume={volumes.global} marketVolume={volumes.perMarket} trackedMarkets={trackedMarkets} roster={rosterFor(week)} />
             </section>
           ))}
         </div>
