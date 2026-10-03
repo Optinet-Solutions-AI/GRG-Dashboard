@@ -6,6 +6,7 @@ import { ImportRankings } from "@/components/ranking/ImportRankings";
 import { SyncRankings } from "@/components/ranking/SyncRankings";
 import { createBpnClient } from "@/lib/rankings/bpn-client";
 import { LanguageToggle, parseGridLanguage } from "@/components/ranking/LanguageToggle";
+import { CheckSummary, type RankingCheck } from "@/components/ranking/CheckSummary";
 
 export default async function RankingPage({ searchParams }: { searchParams: Promise<{ site?: string; lang?: string }> }) {
   const { site, lang } = await searchParams;
@@ -72,6 +73,17 @@ export default async function RankingPage({ searchParams }: { searchParams: Prom
     }
   }
 
+  // What the checker last looked at for this site. Only keywords that earn a place get a
+  // ranking row, so a site checked with nothing in the top 100 stores zero rows — this is how
+  // the empty state tells that apart from "never checked".
+  const { data: checkRows } = await supabase
+    .from("ranking_checks")
+    .select("week_date, keywords_checked, pairs_checked, pairs_ranked, markets")
+    .eq("site_id", selected.id)
+    .order("week_date", { ascending: false })
+    .limit(1);
+  const lastCheck = (checkRows?.[0] ?? null) as RankingCheck | null;
+
   const isAdmin = isAdminRole(await getCurrentRole());
 
   // Freshness hint for the sync panel. Admin-only and best-effort: if the tracker is
@@ -125,6 +137,8 @@ export default async function RankingPage({ searchParams }: { searchParams: Prom
               here, in their own grid — the Arabic table above is unaffected either way.
             </p>
           </div>
+        ) : lastCheck ? (
+          <CheckSummary check={lastCheck} />
         ) : (
           <p className="text-sm text-slate-500">No ranking data yet{isAdmin ? " — import an Ahrefs export above." : "."}</p>
         )

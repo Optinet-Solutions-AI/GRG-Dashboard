@@ -118,8 +118,52 @@ async function importFile(client, file, rows) {
         "insert into rankings (week_date, site_id, country_id, keyword_id, position) values ($1,$2,$3,$4,$5)",
         [target.week, site.id, p.cid, p.kid, p.pos]);
     }
+    // Record that the check HAPPENED, separately from what it found. Without this a site
+    // that was checked and ranked nowhere (.org's first run: 50 keywords, none in the top
+    // 100) is indistinguishable from one that was never checked — both store zero rows.
+    const markets = [...new Set(rows.map((r) => r.countryCode))].sort();
+    const contribution = {
+      keywords: new Set(rows.map((r) => r.keyword)).size,
+      pairs: rows.length,
+      ranked: rows.filter((r) => r.current !== null).length,
+      markets,
+    };
+    await client.query(
+      `insert into ranking_checks (site_id, week_date, contributions, keywords_checked, pairs_checked, pairs_ranked, markets)
+       values ($1, $2, jsonb_build_object($3::text, $4::jsonb), 0, 0, 0, '{}')
+       on conflict (site_id, week_date) do update
+         set contributions = ranking_checks.contributions || excluded.contributions,
+             updated_at = now()`,
+      [site.id, target.week, path.basename(file), JSON.stringify(contribution)]);
+    // Totals are derived from the per-file contributions, so re-importing a file replaces
+    // only its own share instead of double-counting.
+    // Counts and markets are aggregated in separate subqueries on purpose: unnesting the
+    // markets array alongside the sums would multiply the rows and inflate every total.
+    await client.query(
+      `with totals as (
+         select coalesce(sum((v->>'keywords')::int), 0) kw,
+                coalesce(sum((v->>'pairs')::int), 0) pairs,
+                coalesce(sum((v->>'ranked')::int), 0) ranked
+         from ranking_checks rc, jsonb_each(rc.contributions) kv(k, v)
+         where rc.site_id = $1 and rc.week_date = $2
+       ), mk as (
+         select coalesce(array_agg(distinct m), '{}'::text[]) markets
+         from ranking_checks rc, jsonb_each(rc.contributions) kv(k, v),
+              jsonb_array_elements_text(v->'markets') m
+         where rc.site_id = $1 and rc.week_date = $2
+       )
+       update ranking_checks c
+          set keywords_checked = totals.kw, pairs_checked = totals.pairs,
+              pairs_ranked = totals.ranked, markets = mk.markets
+         from totals, mk
+        where c.site_id = $1 and c.week_date = $2`,
+      [site.id, target.week]);
+
     await client.query("commit");
-    return { ...summary, written: payload.length, ranked: payload.filter((p) => p.pos !== null).length };
+    return {
+      ...summary, written: payload.length, ranked: payload.filter((p) => p.pos !== null).length,
+      checkedPairs: contribution.pairs, checkedRanked: contribution.ranked,
+    };
   } catch (e) {
     await client.query("rollback");
     throw e;
