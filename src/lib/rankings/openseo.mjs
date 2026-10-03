@@ -154,3 +154,39 @@ export function exportDate(rows) {
   const dates = rows.map((r) => r.date).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
   return dates.at(-1) ?? null;
 }
+
+/**
+ * Work out which site an export belongs to from its KEYWORDS, when the filename doesn't say.
+ *
+ * Filename routing covers the agreed naming, but the operator writes those names by hand and
+ * a file that doesn't match is skipped — silently, from the user's point of view. The three
+ * GRG sites track almost disjoint keyword sets, so the keywords themselves identify the site
+ * far more reliably than its name does.
+ *
+ * Deliberately conservative: it needs a clear majority of the file's keywords to belong to
+ * one site AND that site to be well ahead of the runner-up. A guess here would write a whole
+ * sweep to the wrong dashboard, which is much worse than skipping the file and saying so.
+ *
+ * @param {OpenSeoRow[]} rows
+ * @param {Record<string, string[]>} fingerprints domain -> its known keywords
+ * @returns {{ domain: string, share: number, runnerUp: number } | null}
+ */
+export function siteFromKeywords(rows, fingerprints) {
+  const keywords = new Set(rows.map((r) => r.keyword.trim()));
+  if (keywords.size === 0) return null;
+
+  const scores = Object.entries(fingerprints)
+    .map(([domain, list]) => {
+      const known = new Set(list.map((k) => k.trim()));
+      let hits = 0;
+      for (const k of keywords) if (known.has(k)) hits++;
+      return { domain, share: hits / keywords.size };
+    })
+    .sort((a, b) => b.share - a.share);
+
+  const [best, second] = scores;
+  if (!best || best.share < 0.6) return null;
+  const runnerUp = second?.share ?? 0;
+  if (best.share - runnerUp < 0.25) return null; // too close to call
+  return { domain: best.domain, share: best.share, runnerUp };
+}

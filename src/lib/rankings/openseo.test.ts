@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  parseOpenSeoCsv, classifyKeywords, pickWeek, siteFromFilename, exportDate,
+  parseOpenSeoCsv, classifyKeywords, pickWeek, siteFromFilename, exportDate, siteFromKeywords,
 } from "./openseo.mjs";
 
 const HEADER = "Keyword,Previous position,Current position,Country code,Current update date";
@@ -113,5 +113,39 @@ describe("exportDate", () => {
   });
   it("is null when the file carries no usable date", () => {
     expect(exportDate(parseOpenSeoCsv(csv("a,,1,AE,")))).toBeNull();
+  });
+});
+
+describe("siteFromKeywords — the fallback when a filename doesn't name a site", () => {
+  const fingerprints = {
+    "gulfrecoverygroup.com": ["com-one", "com-two", "com-three", "com-four"],
+    "gulfrecoverygroup.org": ["org-one", "org-two", "org-three", "org-four"],
+    "gulfrecoverygroup.net": ["net-one", "net-two", "net-three", "net-four"],
+  };
+  const rowsFor = (...kws: string[]) =>
+    parseOpenSeoCsv([HEADER, ...kws.map((k) => `${k},,NR,AE,2026-10-03`)].join("\n"));
+
+  it("identifies the site from its keywords when the name gives nothing away", () => {
+    const got = siteFromKeywords(rowsFor("org-one", "org-two", "org-three"), fingerprints);
+    expect(got?.domain).toBe("gulfrecoverygroup.org");
+    expect(got?.share).toBe(1);
+  });
+
+  it("refuses to guess when the file barely matches anything", () => {
+    // Writing a whole sweep to the wrong dashboard is far worse than skipping the file.
+    expect(siteFromKeywords(rowsFor("org-one", "x", "y", "z", "w"), fingerprints)).toBeNull();
+  });
+
+  it("refuses to guess when two sites score too close together", () => {
+    expect(siteFromKeywords(rowsFor("org-one", "org-two", "net-one", "net-two"), fingerprints)).toBeNull();
+  });
+
+  it("tolerates a few unknown keywords as long as one site clearly dominates", () => {
+    const got = siteFromKeywords(rowsFor("net-one", "net-two", "net-three", "brand-new-kw"), fingerprints);
+    expect(got?.domain).toBe("gulfrecoverygroup.net");
+  });
+
+  it("returns null for an empty file instead of dividing by zero", () => {
+    expect(siteFromKeywords([], fingerprints)).toBeNull();
   });
 });

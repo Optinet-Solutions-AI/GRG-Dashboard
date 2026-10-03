@@ -18,8 +18,12 @@ import fs from "node:fs";
 import path from "node:path";
 import pg from "pg";
 import {
-  parseOpenSeoCsv, classifyKeywords, pickWeek, siteFromFilename, exportDate,
+  parseOpenSeoCsv, classifyKeywords, pickWeek, siteFromFilename, exportDate, siteFromKeywords,
 } from "../src/lib/rankings/openseo.mjs";
+
+// Per-site keyword sets, used only when a filename doesn't name its site.
+const fingerprints = JSON.parse(
+  fs.readFileSync(new URL("./data/site-keyword-fingerprints.json", import.meta.url), "utf8"));
 
 const args = process.argv.slice(2);
 const flag = (n) => args.includes(n);
@@ -51,9 +55,7 @@ function writeState(s) {
   fs.writeFileSync(STATE, JSON.stringify(s, null, 2));
 }
 
-async function importFile(client, file, rows) {
-  const domain = siteFromFilename(path.basename(file));
-  if (!domain) throw new Error("cannot tell which site this export is for from its filename");
+async function importFile(client, file, rows, domain) {
 
   const site = (await client.query("select id from sites where domain = $1", [domain])).rows[0];
   if (!site) throw new Error(`no site row for ${domain}`);
@@ -172,8 +174,12 @@ async function importFile(client, file, rows) {
 
 async function main() {
   if (!fs.existsSync(DIR)) { log(`drop folder not found: ${DIR} - nothing to do`); return; }
+  // Every CSV is a candidate, not just ones named to a pattern: the operator names these
+  // files by hand, and a results file that doesn't match would otherwise be ignored without
+  // anyone noticing. Parsing and site detection decide what is really an export; anything
+  // else is recorded as skipped once and never looked at again.
   const candidates = fs.readdirSync(DIR)
-    .filter((f) => f.toLowerCase().endsWith(".csv") && /openseo|grg/i.test(f))
+    .filter((f) => f.toLowerCase().endsWith(".csv"))
     .map((f) => path.join(DIR, f));
   if (!candidates.length) return;
 
@@ -200,17 +206,27 @@ async function main() {
       // bytes, so record them and stop retrying — otherwise an unrelated CSV sitting in the
       // folder reports the same failure every five minutes forever. Database problems are
       // NOT recorded, so a transient outage retries on the next pass.
-      let rows;
+      let rows, domain;
       try {
         rows = parseOpenSeoCsv(fs.readFileSync(file, "utf8"));
-        if (!siteFromFilename(path.basename(file))) throw new Error("filename doesn't name a known site");
+        domain = siteFromFilename(path.basename(file));
+        if (!domain) {
+          // The operator names these files by hand. Rather than skip one that doesn't match
+          // the agreed pattern, identify the site from the keywords themselves — the three
+          // sites track almost disjoint sets. Still refuses to guess when it isn't sure.
+          const guess = siteFromKeywords(rows, fingerprints);
+          if (!guess) throw new Error("filename doesn't name a site and its keywords don't clearly match one");
+          domain = guess.domain;
+          log(`${path.basename(file)}: filename gives no site — matched ${domain} on ` +
+              `${Math.round(guess.share * 100)}% of its keywords (next best ${Math.round(guess.runnerUp * 100)}%)`);
+        }
       } catch (e) {
         log(`SKIP ${path.basename(file)}: ${e.message}`);
         if (!DRY) { state[file] = { key, skippedAt: new Date().toISOString(), reason: e.message }; writeState(state); }
         continue;
       }
       try {
-        const r = await importFile(client, file, rows);
+        const r = await importFile(client, file, rows, domain);
         log(`${r.file} -> ${r.site} week ${r.week} (${r.mode}): ${r.written} pairs, ${r.ranked} ranking; ` +
             `${r.known} tracked, ${r.adopted} adopted, ${r.skipped} skipped as unranked${r.dryRun ? " [DRY]" : ""}`);
         if (!DRY) { state[file] = { key, importedAt: new Date().toISOString(), ...r }; writeState(state); }
