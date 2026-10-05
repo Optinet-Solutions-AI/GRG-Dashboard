@@ -79,6 +79,21 @@ export function siteFromFilename(name) {
 
 const ARABIC = /[؀-ۿ]/;
 
+/**
+ * The key two spellings of the same keyword must share.
+ *
+ * OpenSEO lower-cases Latin text, so an Arabic keyword containing a Latin token comes back
+ * changed: the sheet's "تتبع محفظة USDT" returns as "تتبع محفظة usdt". Matched literally that
+ * is a different keyword, so it was adopted as a second row — 15 of them — and the roster kept
+ * pointing at the original, which then showed "Not checked" forever while its results sat on
+ * the duplicate. Width and whitespace differences would do the same.
+ *
+ * Display text is never normalised; this is only ever used for lookups.
+ */
+export function keywordKey(text) {
+  return String(text).normalize("NFKC").trim().replace(/\s+/g, " ").toLowerCase();
+}
+
 /** @typedef {{ keyword: string, language: 'ar'|'en', reason: string }} Adoption */
 
 /**
@@ -115,8 +130,11 @@ export function classifyKeywords(rows, tracked, opts = {}) {
   const adopt = [];
   const skip = [];
   const known = [];
+  // Tracked keywords are matched on their key, so a case-folded spelling is recognised as the
+  // keyword it already is rather than adopted as a new one.
+  const trackedKeys = new Set([...tracked].map(keywordKey));
   for (const [keyword, list] of byKeyword) {
-    if (tracked.has(keyword)) { known.push(keyword); continue; }
+    if (trackedKeys.has(keywordKey(keyword))) { known.push(keyword); continue; }
     const english = !ARABIC.test(keyword);
     if (establishing) {
       adopt.push({

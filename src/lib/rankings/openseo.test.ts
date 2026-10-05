@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  parseOpenSeoCsv, classifyKeywords, pickWeek, siteFromFilename, exportDate, siteFromKeywords,
+  parseOpenSeoCsv, classifyKeywords, pickWeek, siteFromFilename, exportDate, siteFromKeywords, keywordKey,
 } from "./openseo.mjs";
 
 const HEADER = "Keyword,Previous position,Current position,Country code,Current update date";
@@ -184,5 +184,29 @@ describe("pickWeek — a first sweep that ranked nothing still anchors its week"
     // .org week 1 stored no ranking rows at all, only a check record. Passing the check weeks
     // in is what stops the follow-up opening a second, parallel week.
     expect(pickWeek("2026-10-03", ["2026-10-02"])).toEqual({ week: "2026-10-02", mode: "merge" });
+  });
+});
+
+describe("keywordKey — one keyword, however it comes back spelled", () => {
+  it("folds the Latin case OpenSEO applies, so USDT and usdt are the same keyword", () => {
+    // 15 keywords were duplicated this way: the roster pointed at the sheet's spelling while
+    // the results landed on a second row, so the grid said "Not checked" forever.
+    expect(keywordKey("تتبع محفظة USDT")).toBe(keywordKey("تتبع محفظة usdt"));
+  });
+
+  it("ignores stray whitespace without touching the Arabic itself", () => {
+    expect(keywordKey("  استرجاع   أموال التداول ")).toBe(keywordKey("استرجاع أموال التداول"));
+  });
+
+  it("still tells genuinely different keywords apart", () => {
+    // Dialect variants are different keywords, not spellings of one.
+    expect(keywordKey("وش علامات النصب في التداول")).not.toBe(keywordKey("شنو علامات النصب في التداول"));
+  });
+
+  it("treats a case-folded keyword as already tracked instead of adopting it again", () => {
+    const rows = parseOpenSeoCsv([HEADER, "تتبع محفظة usdt,,NR,AE,2026-10-03"].join("\n"));
+    const { known, adopt } = classifyKeywords(rows, new Set(["تتبع محفظة USDT"]));
+    expect(known).toEqual(["تتبع محفظة usdt"]);
+    expect(adopt).toEqual([]);
   });
 });

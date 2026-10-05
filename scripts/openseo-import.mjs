@@ -19,6 +19,7 @@ import path from "node:path";
 import pg from "pg";
 import {
   parseOpenSeoCsv, classifyKeywords, pickWeek, siteFromFilename, exportDate, siteFromKeywords,
+  keywordKey,
 } from "../src/lib/rankings/openseo.mjs";
 
 // Per-site keyword sets, used only when a filename doesn't name its site.
@@ -92,8 +93,10 @@ async function importFile(client, file, rows, domain) {
 
   const countries = new Map((await client.query("select id, code from countries")).rows
     .map((r) => [r.code.toUpperCase(), r.id]));
+  // Keyed, not literal: see keywordKey(). A literal map re-adopted every keyword whose Latin
+  // token OpenSEO had lower-cased, and the roster then pointed at the orphaned original.
   const keywords = new Map((await client.query("select id, text from keywords")).rows
-    .map((r) => [r.text.trim(), r.id]));
+    .map((r) => [keywordKey(r.text), r.id]));
 
   const summary = {
     file: path.basename(file), site: domain, week: target.week, mode: target.mode,
@@ -106,7 +109,7 @@ async function importFile(client, file, rows, domain) {
   try {
     let maxSort = (await client.query("select coalesce(max(sort_order), 0) m from keywords")).rows[0].m;
     for (const a of adopt) {
-      if (keywords.has(a.keyword)) continue; // text already in the shared keywords table — reuse it
+      if (keywords.has(keywordKey(a.keyword))) continue; // already in the shared keywords table — reuse it
       const ins = await client.query(
         "insert into keywords (text, sort_order, active, language) values ($1, $2, true, $3) returning id",
         [a.keyword, ++maxSort, a.language]);
@@ -114,10 +117,11 @@ async function importFile(client, file, rows, domain) {
     }
 
     // Only keywords that earned a place get rows; the rest are deliberately dropped.
-    const keep = new Set([...known, ...adopt.map((a) => a.keyword)]);
+    const keep = new Set([...known, ...adopt.map((a) => a.keyword)].map(keywordKey));
     const payload = rows
-      .filter((r) => keep.has(r.keyword) && keywords.has(r.keyword) && countries.has(r.countryCode))
-      .map((r) => ({ kid: keywords.get(r.keyword), cid: countries.get(r.countryCode), pos: r.current }));
+      .filter((r) => keep.has(keywordKey(r.keyword)) && keywords.has(keywordKey(r.keyword))
+        && countries.has(r.countryCode))
+      .map((r) => ({ kid: keywords.get(keywordKey(r.keyword)), cid: countries.get(r.countryCode), pos: r.current }));
 
     if (target.mode === "new") {
       // The export is authoritative for a week it opens: clear it, then write exactly its pairs.

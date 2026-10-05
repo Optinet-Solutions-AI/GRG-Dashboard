@@ -14,6 +14,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import pg from "pg";
+import { keywordKey } from "../src/lib/rankings/openseo.mjs";
 
 // The sheet is addressed by row number, and its blank rows are structural — they separate the
 // three site blocks. parseDelimited() in openseo.mjs drops blank rows (right for an export,
@@ -98,22 +99,24 @@ async function main() {
       const roster = rosterFor(s, cell);
 
       // Keywords are shared across sites, so reuse an existing row before inserting.
+      // Keyed so the sheet's "USDT" finds the row OpenSEO wrote as "usdt" instead of
+      // inserting a second keyword that nothing will ever match.
       const kwId = new Map((await client.query("select id, text from keywords")).rows
-        .map((r) => [r.text.trim(), r.id]));
+        .map((r) => [keywordKey(r.text), r.id]));
       let maxSort = (await client.query("select coalesce(max(sort_order), 0) m from keywords")).rows[0].m;
 
       const pairs = [];
       let created = 0;
       if (!DRY) await client.query("begin");
       for (const t of roster) {
-        let id = kwId.get(t.keyword);
+        let id = kwId.get(keywordKey(t.keyword));
         if (!id) {
-          if (DRY) { created++; kwId.set(t.keyword, "dry"); continue; }
+          if (DRY) { created++; kwId.set(keywordKey(t.keyword), "dry"); continue; }
           const ins = await client.query(
             "insert into keywords (text, sort_order, active, language) values ($1,$2,true,'ar') returning id",
             [t.keyword, ++maxSort]);
           id = ins.rows[0].id;
-          kwId.set(t.keyword, id);
+          kwId.set(keywordKey(t.keyword), id);
           created++;
         }
         if (ccId.has(t.country)) pairs.push({ kid: id, cid: ccId.get(t.country), group: t.group });
