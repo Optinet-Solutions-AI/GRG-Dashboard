@@ -90,6 +90,11 @@ const ARABIC = /[؀-ۿ]/;
  *
  * Display text is never normalised; this is only ever used for lookups.
  */
+/** Which language grid a keyword belongs to. Any Arabic character makes it Arabic. */
+export function keywordLanguage(text) {
+  return ARABIC.test(String(text)) ? "ar" : "en";
+}
+
 export function keywordKey(text) {
   return String(text).normalize("NFKC").trim().replace(/\s+/g, " ").toLowerCase();
 }
@@ -135,7 +140,7 @@ export function classifyKeywords(rows, tracked, opts = {}) {
   const trackedKeys = new Set([...tracked].map(keywordKey));
   for (const [keyword, list] of byKeyword) {
     if (trackedKeys.has(keywordKey(keyword))) { known.push(keyword); continue; }
-    const english = !ARABIC.test(keyword);
+    const english = keywordLanguage(keyword) === "en";
     if (establishing) {
       adopt.push({
         keyword,

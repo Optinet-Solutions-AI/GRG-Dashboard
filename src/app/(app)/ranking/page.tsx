@@ -10,13 +10,20 @@ import { CheckSummary, type RankingCheck } from "@/components/ranking/CheckSumma
 
 export default async function RankingPage({ searchParams }: { searchParams: Promise<{ site?: string; lang?: string }> }) {
   const { site, lang } = await searchParams;
-  const language = parseGridLanguage(lang);
+  const requested = parseGridLanguage(lang);
 
   const supabase = await createServerSupabaseClient();
-  const { data: sites } = await supabase.from("sites").select("id, display_name, domain").order("sort_order");
+  const { data: sites } = await supabase.from("sites").select("id, display_name, domain, tracked_languages").order("sort_order");
   const siteList = sites ?? [];
   const selected = siteList.find((s) => s.id === site) ?? siteList[0];
   if (!selected) return <p className="text-sm text-slate-500">No sites configured yet.</p>;
+
+  // A site only shows the languages it tracks. .org and .net are Arabic-only, so their English
+  // tab would promise a grid that is never meant to exist — ?lang=en there falls back to Arabic
+  // and the toggle is hidden entirely rather than offered as a dead end.
+  const trackedLanguages = ((selected as { tracked_languages?: string[] }).tracked_languages ?? ["ar", "en"])
+    .filter((l): l is "ar" | "en" => l === "ar" || l === "en");
+  const language = trackedLanguages.includes(requested) ? requested : "ar";
 
   // Single round-trip for the most recent ~6 months of weeks (was one RPC per week).
   const weeklyAll = await getRankingGridByWeek(selected.id, 26); // newest first
@@ -154,7 +161,9 @@ export default async function RankingPage({ searchParams }: { searchParams: Prom
         {!site ? " Showing the first site — use the selector in the top bar to change site." : ""}
       </p>
 
-      <LanguageToggle site={site} current={language} counts={counts} />
+      {trackedLanguages.length > 1 ? (
+        <LanguageToggle site={site} current={language} counts={counts} />
+      ) : null}
 
       {isAdmin ? (
         <details className="rounded-xl border border-slate-200 bg-white p-4" open={weeks.length === 0}>

@@ -19,7 +19,7 @@ import path from "node:path";
 import pg from "pg";
 import {
   parseOpenSeoCsv, classifyKeywords, pickWeek, siteFromFilename, exportDate, siteFromKeywords,
-  keywordKey,
+  keywordKey, keywordLanguage,
 } from "../src/lib/rankings/openseo.mjs";
 
 // Per-site keyword sets, used only when a filename doesn't name its site.
@@ -56,10 +56,19 @@ function writeState(s) {
   fs.writeFileSync(STATE, JSON.stringify(s, null, 2));
 }
 
-async function importFile(client, file, rows, domain) {
+async function importFile(client, file, rowsIn, domain) {
+  let rows = rowsIn;
 
-  const site = (await client.query("select id from sites where domain = $1", [domain])).rows[0];
+  const site = (await client.query(
+    "select id, tracked_languages from sites where domain = $1", [domain])).rows[0];
   if (!site) throw new Error(`no site row for ${domain}`);
+
+  // A site tracks only the languages it is configured for. .org and .net are Arabic-only;
+  // without this filter their next export would re-adopt the English set that came with it.
+  const langs = new Set(site.tracked_languages ?? ["ar", "en"]);
+  const dropped = rows.length;
+  rows = rows.filter((r) => langs.has(keywordLanguage(r.keyword)));
+  const skippedByLanguage = dropped - rows.length;
 
   const date = exportDate(rows);
   if (!date) throw new Error("no usable 'Current update date' in the export");
@@ -101,7 +110,7 @@ async function importFile(client, file, rows, domain) {
   const summary = {
     file: path.basename(file), site: domain, week: target.week, mode: target.mode,
     rows: rows.length, known: known.length, adopted: adopt.length, skipped: skip.length,
-    establishing,
+    establishing, skippedByLanguage,
   };
   if (DRY) return { ...summary, written: 0, ranked: 0, dryRun: true };
 
@@ -247,7 +256,9 @@ async function main() {
       try {
         const r = await importFile(client, file, rows, domain);
         log(`${r.file} -> ${r.site} week ${r.week} (${r.mode}): ${r.written} pairs, ${r.ranked} ranking; ` +
-            `${r.known} tracked, ${r.adopted} adopted, ${r.skipped} skipped as unranked${r.dryRun ? " [DRY]" : ""}`);
+            `${r.known} tracked, ${r.adopted} adopted, ${r.skipped} skipped as unranked` +
+            (r.skippedByLanguage ? `, ${r.skippedByLanguage} skipped (language not tracked here)` : "") +
+            (r.dryRun ? " [DRY]" : ""));
         if (!DRY) { state[file] = { key, importedAt: new Date().toISOString(), ...r }; writeState(state); }
       } catch (e) {
         // One bad file must not stop the others, and must not be marked done.

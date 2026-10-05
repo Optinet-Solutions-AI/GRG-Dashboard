@@ -105,7 +105,7 @@ export function RankingGrid({
   const byKey = new Map(rows.map((r) => [`${r.keyword}|${r.country}`, r]));
 
   const totalCols = 2 + countries.length;
-  const headBase = "bg-slate-50 px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500";
+  const headBase = "bg-slate-50 px-2 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-500";
 
   // Which markets a keyword targets: the page-wide picture when we have it, else this
   // week's rows. All-market keywords cover every country; country-specific ones exactly
@@ -137,6 +137,11 @@ export function RankingGrid({
         .sort((a, b) => groupRank(groupOf(a)) - groupRank(groupOf(b)) || keywordRank.get(a)! - keywordRank.get(b)!)
         .map((keyword) => ({ group: groupOf(keyword), keyword }));
 
+  // The keyword column follows its own text: right-aligned for the Arabic grid, left for the
+  // English one, so the header never sits at the opposite end from the words beneath it.
+  const rtl = entries.some((e) => /[؀-ۿ]/.test(e.keyword));
+  const keywordAlign = rtl ? "text-right" : "text-left";
+
   // Which markets a row covers: from its block when the sheet defines one, else inferred.
   const marketsFor = (entry: { group: string; keyword: string }) =>
     groups ? (entry.group === "ALL" ? countries : [entry.group]) : trackedIn(entry.keyword);
@@ -163,10 +168,10 @@ export function RankingGrid({
     const markets = marketsFor(entry);
     body.push(
       <tr key={`${g}|${kw}`} className={`border-b border-slate-100 transition-colors hover:bg-sky-50/60 ${zebra}`}>
-        <td dir="auto" className="max-w-[420px] border-r border-slate-100 px-3 py-2 align-middle font-medium leading-snug text-slate-800">
+        <td dir="auto" className={`border-r border-slate-100 px-3 py-2 align-middle text-[13px] font-medium leading-snug text-slate-800 ${keywordAlign}`}>
           {kw}
         </td>
-        <td className="border-r border-slate-100 px-3 py-2 text-right align-middle tabular-nums text-xs text-slate-500">
+        <td className="border-r border-slate-100 px-2 py-1.5 text-right align-middle tabular-nums text-xs text-slate-500">
           {formatVolume(globalVolume?.get(kw))}
         </td>
         {countries.map((c) => {
@@ -179,7 +184,7 @@ export function RankingGrid({
               <td
                 key={c}
                 title="Not in the top 100 — this market hasn't been returned by a check yet, so it's still outstanding"
-                className="border-l-2 border-slate-100 border-l-slate-200 px-3 py-2 text-center align-middle"
+                className="border-l-2 border-slate-100 border-l-slate-200 px-2 py-1.5 text-center align-middle"
               >
                 {/* Reads the same as a genuine miss, because for the reader the outcome is
                     the same: it isn't ranking. The dotted underline and the tooltip keep the
@@ -197,7 +202,7 @@ export function RankingGrid({
               <td
                 key={c}
                 title="Not tracked in this market"
-                className="border-l-2 border-slate-100 border-l-slate-200 bg-slate-50/70 px-3 py-2 text-center align-middle text-slate-300"
+                className="border-l-2 border-slate-100 border-l-slate-200 bg-slate-50/70 px-2 py-1.5 text-center align-middle text-slate-300"
               >
                 ·
               </td>
@@ -205,7 +210,7 @@ export function RankingGrid({
           }
           const row = byKey.get(`${kw}|${c}`);
           return (
-            <td key={c} className="border-l-2 border-slate-100 border-l-slate-200 px-3 py-2 text-center align-middle">
+            <td key={c} className="border-l-2 border-slate-100 border-l-slate-200 px-2 py-1.5 text-center align-middle">
               <Cell position={row?.position ?? null} prev={row?.prev_position ?? null} />
             </td>
           );
@@ -235,13 +240,22 @@ export function RankingGrid({
         </p>
       )}
       <div className="overflow-x-auto">
-      <table className="w-full border-collapse text-sm">
+      <table className="w-full table-fixed border-collapse text-sm">
+        <colgroup>
+          {/* Fixed layout: the keyword gets a set share and the markets split the rest evenly,
+              instead of the first column absorbing every spare pixel. */}
+          <col className="w-[24%]" />
+          <col className="w-[60px]" />
+          {countries.map((c) => (
+            <col key={c} />
+          ))}
+        </colgroup>
         <thead>
           {/* One row, one column per market. The per-market SV column repeated the same
               placeholder beside every rank and doubled the width of the table; the header
               already names the market, so the rank needs no second column under it. */}
           <tr>
-            <th className={`border-b border-r border-slate-200 text-right ${headBase}`}>Keyword</th>
+            <th className={`border-b border-r border-slate-200 ${keywordAlign} ${headBase}`}>Keyword</th>
             <th title="Global search volume" className={`border-b border-r border-slate-200 text-right ${headBase}`}>GSV</th>
             {countries.map((c) => (
               <th key={c} className={`border-b border-l-2 border-slate-200 border-l-slate-300 text-center ${headBase}`}>

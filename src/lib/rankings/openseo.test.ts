@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   parseOpenSeoCsv, classifyKeywords, pickWeek, siteFromFilename, exportDate, siteFromKeywords, keywordKey,
+  keywordLanguage,
 } from "./openseo.mjs";
 
 const HEADER = "Keyword,Previous position,Current position,Country code,Current update date";
@@ -208,5 +209,30 @@ describe("keywordKey — one keyword, however it comes back spelled", () => {
     const { known, adopt } = classifyKeywords(rows, new Set(["تتبع محفظة USDT"]));
     expect(known).toEqual(["تتبع محفظة usdt"]);
     expect(adopt).toEqual([]);
+  });
+});
+
+describe("keywordLanguage — which grid a keyword belongs in", () => {
+  it("calls anything containing Arabic an Arabic keyword", () => {
+    expect(keywordLanguage("تتبع محفظة USDT")).toBe("ar");
+    expect(keywordLanguage("استرجاع أموال التداول")).toBe("ar");
+  });
+
+  it("calls a purely Latin keyword English", () => {
+    expect(keywordLanguage("frozen trading account")).toBe("en");
+  });
+
+  it("is what lets an Arabic-only site drop the English half of an export", () => {
+    // .org and .net track Arabic only. Their exports still carry an English set, and a first
+    // sweep adopts everything it returns, so without this filter the English grid came back
+    // on every import.
+    const rows = parseOpenSeoCsv([
+      HEADER,
+      "استرجاع أموال التداول,,NR,AE,2026-10-03",
+      "frozen trading account,,NR,AE,2026-10-03",
+    ].join("\n"));
+    const arabicOnly = rows.filter((r) => keywordLanguage(r.keyword) === "ar");
+    expect(arabicOnly).toHaveLength(1);
+    expect(arabicOnly[0].keyword).toBe("استرجاع أموال التداول");
   });
 });
