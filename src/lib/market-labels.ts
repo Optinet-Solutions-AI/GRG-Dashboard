@@ -1,10 +1,11 @@
-// Full market names for the ranking grid's column headers.
+// Market names for the ranking grid's column headers.
 //
-// The grid used to print the raw ISO code for everything but AE, so five of the six columns
-// read "SA", "QA", "KW", "BH", "OM". The header is the only place the market is named, so it
-// spells the country out.
+// The grid used to print the raw ISO code for five of the six markets — "SA", "QA", "KW",
+// "BH", "OM" — and the header is the only place a market is named, so it now gives the
+// country. The exception is the UAE, which is how people refer to it; "United Arab Emirates"
+// only made that column wide.
 const MARKET_LABELS: Record<string, string> = {
-  AE: "United Arab Emirates",
+  AE: "UAE",
   SA: "Saudi Arabia",
   QA: "Qatar",
   KW: "Kuwait",
@@ -16,9 +17,11 @@ export function marketLabel(code: string): string {
   return MARKET_LABELS[code] ?? code;
 }
 
-/** For places too narrow for the full name — chips, sentences listing several markets. */
-const SHORT_LABELS: Record<string, string> = { AE: "UAE" };
-
+/**
+ * Kept as a separate entry point for prose, even though it currently matches `marketLabel`
+ * for every market: "UAE" is the name people use, so spelling it out bought nothing and only
+ * made the column wide.
+ */
 export function marketLabelShort(code: string): string {
-  return SHORT_LABELS[code] ?? MARKET_LABELS[code] ?? code;
+  return marketLabel(code);
 }

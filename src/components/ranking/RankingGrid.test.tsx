@@ -21,7 +21,7 @@ describe("RankingGrid volumes", () => {
 
   it("names each market in full rather than printing its country code", () => {
     render(<RankingGrid rows={rows} />);
-    expect(screen.getByText(/United Arab Emirates/)).toBeTruthy();
+    expect(screen.getByText(/UAE/)).toBeTruthy();
   });
 
   it("drops the English column from the Arabic grid", () => {
