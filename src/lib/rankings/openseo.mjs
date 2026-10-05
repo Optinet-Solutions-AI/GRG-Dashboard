@@ -88,13 +88,21 @@ const ARABIC = /[؀-ۿ]/;
  * only adopted if it ranks in the top 100 somewhere — otherwise the dashboard fills up with
  * hundreds of candidates that have never ranked.
  *
+ * That rule exists to protect an ESTABLISHED keyword set from being swamped by candidates.
+ * A site being tracked for the first time has no set to protect — the export IS its set — so
+ * `establishing` adopts everything, and the grid shows the whole list with "Not in top 100"
+ * against the ones that don't rank yet. Without it .org stored nothing at all: 98 keywords
+ * were checked across six markets, none reached the top 100, and the page had no table to
+ * draw. From the following week on the strict rule applies again.
+ *
  * The one exception is the English set, which is the counterpart of .com's permanent main
  * keywords: it is adopted on arrival, unranked included, so the English grid is populated
  * from day one. That exception applies only to a site that ALREADY tracks keywords — on a
  * site with no history there is no permanent set for English to be the counterpart of, so a
  * Latin-script keyword there follows the same top-100 rule as everything else.
  */
-export function classifyKeywords(rows, tracked) {
+export function classifyKeywords(rows, tracked, opts = {}) {
+  const { establishing = false } = opts;
   const established = tracked.size > 0;
   /** @type {Map<string, OpenSeoRow[]>} */
   const byKeyword = new Map();
@@ -110,6 +118,14 @@ export function classifyKeywords(rows, tracked) {
   for (const [keyword, list] of byKeyword) {
     if (tracked.has(keyword)) { known.push(keyword); continue; }
     const english = !ARABIC.test(keyword);
+    if (establishing) {
+      adopt.push({
+        keyword,
+        language: english ? "en" : "ar",
+        reason: "first run for this site — the export defines the tracked set",
+      });
+      continue;
+    }
     if (english && established) {
       adopt.push({ keyword, language: "en", reason: "English set — goes in the English grid" });
       continue;

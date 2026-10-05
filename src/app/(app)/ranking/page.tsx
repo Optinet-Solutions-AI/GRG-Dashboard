@@ -28,8 +28,18 @@ export default async function RankingPage({ searchParams }: { searchParams: Prom
   const { data: kwRows } = await supabase.from("keywords").select("text, language");
   const languageOf = new Map((kwRows ?? []).map((k) => [String(k.text).trim(), String(k.language)]));
   const inLanguage = (keyword: string) => (languageOf.get(keyword.trim()) ?? "ar") === language;
+  // Counted from THIS site's rows, not the whole keywords table: the table is shared across
+  // the three sites, so a global count told the .org page it had 95 Arabic keywords when the
+  // number belonged almost entirely to .com.
   const counts = { ar: 0, en: 0 } as Record<"ar" | "en", number>;
-  for (const k of kwRows ?? []) counts[String(k.language) === "en" ? "en" : "ar"]++;
+  const seenHere = new Set<string>();
+  for (const { rows } of weeklyAll) {
+    for (const r of rows) {
+      if (seenHere.has(r.keyword)) continue;
+      seenHere.add(r.keyword);
+      counts[(languageOf.get(r.keyword.trim()) ?? "ar") === "en" ? "en" : "ar"]++;
+    }
+  }
 
   const weekly = weeklyAll
     .map(({ week, rows }) => ({ week, rows: rows.filter((r) => inLanguage(r.keyword)) }))

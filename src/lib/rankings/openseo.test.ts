@@ -149,3 +149,40 @@ describe("siteFromKeywords — the fallback when a filename doesn't name a site"
     expect(siteFromKeywords([], fingerprints)).toBeNull();
   });
 });
+
+describe("classifyKeywords — a site being tracked for the FIRST time", () => {
+  const rows = parseOpenSeoCsv([
+    HEADER,
+    "كلمة ترتب,,7,AE,2026-10-03",
+    "كلمة لا ترتب,,NR,AE,2026-10-03",
+    "كلمة أخرى لا ترتب,,NR,SA,2026-10-03",
+  ].join("\n"));
+
+  it("adopts everything, so a grid where nothing ranks still has a table to draw", () => {
+    // The real .org case: 98 keywords across six markets, none in the top 100, nothing stored,
+    // and the page had no table at all.
+    const { adopt, skip } = classifyKeywords(rows, new Set(), { establishing: true });
+    expect(adopt).toHaveLength(3);
+    expect(skip).toEqual([]);
+    expect(adopt.every((a) => a.reason.includes("first run"))).toBe(true);
+  });
+
+  it("still applies the strict top-100 rule once the site has history", () => {
+    const { adopt, skip } = classifyKeywords(rows, new Set(["كلمة ترتب"]));
+    expect(adopt.map((a) => a.keyword)).toEqual([]);
+    expect(skip).toEqual(["كلمة لا ترتب", "كلمة أخرى لا ترتب"]);
+  });
+
+  it("defaults to the strict rule when the caller says nothing", () => {
+    const { skip } = classifyKeywords(rows, new Set(["x"]));
+    expect(skip.length).toBeGreaterThan(0);
+  });
+});
+
+describe("pickWeek — a first sweep that ranked nothing still anchors its week", () => {
+  it("merges the follow-up into the week the check record opened", () => {
+    // .org week 1 stored no ranking rows at all, only a check record. Passing the check weeks
+    // in is what stops the follow-up opening a second, parallel week.
+    expect(pickWeek("2026-10-03", ["2026-10-02"])).toEqual({ week: "2026-10-02", mode: "merge" });
+  });
+});

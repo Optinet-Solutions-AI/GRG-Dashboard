@@ -63,8 +63,14 @@ async function importFile(client, file, rows, domain) {
   const date = exportDate(rows);
   if (!date) throw new Error("no usable 'Current update date' in the export");
 
+  // Weeks from BOTH tables: a first sweep that ranked nothing stores no ranking rows, only a
+  // check record, so looking at `rankings` alone would make its follow-up open a second week.
   const weeks = (await client.query(
-    "select distinct week_date::text w from rankings where site_id = $1 order by w", [site.id],
+    `select w from (
+       select distinct week_date::text w from rankings where site_id = $1
+       union
+       select distinct week_date::text w from ranking_checks where site_id = $1
+     ) t order by w`, [site.id],
   )).rows.map((r) => r.w);
   const target = pickWeek(date, weeks);
 
@@ -74,7 +80,15 @@ async function importFile(client, file, rows, domain) {
     `select distinct k.text from rankings r join keywords k on k.id = r.keyword_id
      where r.site_id = $1`, [site.id]);
   const tracked = new Set(trackedRows.rows.map((r) => r.text.trim()));
-  const { adopt, skip, known } = classifyKeywords(rows, tracked);
+
+  // A site with no ranking history BEFORE this week is being set up: the export defines its
+  // keyword set, so everything in it is adopted and the grid can render the full list with
+  // "Not in top 100". Checked against earlier weeks rather than any row at all, so a sweep
+  // that arrives in several files still counts as one establishing run.
+  const { rows: priorRows } = await client.query(
+    "select 1 from rankings where site_id = $1 and week_date < $2 limit 1", [site.id, target.week]);
+  const establishing = priorRows.length === 0;
+  const { adopt, skip, known } = classifyKeywords(rows, tracked, { establishing });
 
   const countries = new Map((await client.query("select id, code from countries")).rows
     .map((r) => [r.code.toUpperCase(), r.id]));
@@ -84,6 +98,7 @@ async function importFile(client, file, rows, domain) {
   const summary = {
     file: path.basename(file), site: domain, week: target.week, mode: target.mode,
     rows: rows.length, known: known.length, adopted: adopt.length, skipped: skip.length,
+    establishing,
   };
   if (DRY) return { ...summary, written: 0, ranked: 0, dryRun: true };
 
