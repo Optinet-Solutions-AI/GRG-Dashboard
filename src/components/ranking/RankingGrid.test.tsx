@@ -191,3 +191,53 @@ describe("RankingGrid roster — every tracked keyword holds its place", () => {
     expect(screen.queryByText("kw-b")).toBeNull();
   });
 });
+
+describe("RankingGrid groups — the sheet decides the shape, not the data that came back", () => {
+  const countries = ["SA", "AE", "KW"];
+  const groups = [
+    { code: "ALL", keywords: ["cross-1", "cross-2"] },
+    { code: "SA", keywords: ["sa-only", "shared"] },
+    { code: "KW", keywords: ["shared"] },
+  ];
+  const roster = { keywords: [], countries };
+
+  it("draws every block the sheet defines, even with no data at all", () => {
+    // .org: 98 keywords checked, none ranked, so nothing was stored — the table must still
+    // show its shape rather than collapsing.
+    render(<RankingGrid rows={[]} roster={roster} groups={groups} />);
+    expect(screen.getByText("cross-1")).toBeTruthy();
+    expect(screen.getByText("sa-only")).toBeTruthy();
+  });
+
+  it("lets one keyword appear under several markets, which inference cannot express", () => {
+    render(<RankingGrid rows={[]} roster={roster} groups={groups} />);
+    // "shared" is in both the SA and KW columns of the sheet.
+    expect(screen.getAllByText("shared")).toHaveLength(2);
+  });
+
+  it("gives a cross-market row every market, and a country row only its own", () => {
+    const rows: GridRow[] = [
+      { keyword: "cross-1", keyword_sort: 0, country: "SA", country_sort: 0, position: 5, prev_position: null },
+    ];
+    render(<RankingGrid rows={rows} roster={roster} groups={groups} />);
+    // cross-1: one real position + 2 "Not checked". sa-only + shared(SA): 1 each. shared(KW): 1.
+    // cross-2: 3. Country rows must NOT claim the markets they don't target.
+    expect(screen.getByText("5")).toBeTruthy();
+    expect(screen.getAllByText("Not checked")).toHaveLength(8);
+  });
+
+  it("counts each block by its own rows, so the header matches what is listed", () => {
+    render(<RankingGrid rows={[]} roster={roster} groups={groups} />);
+    // ALL and SA hold 2 keywords each; KW holds the single shared one.
+    expect(screen.getAllByText(/· 2 keywords/)).toHaveLength(2);
+    expect(screen.getAllByText(/· 1 keyword$/)).toHaveLength(1);
+  });
+
+  it("falls back to inferring the shape when no groups are supplied", () => {
+    const rows: GridRow[] = [
+      { keyword: "kw-a", keyword_sort: 0, country: "SA", country_sort: 0, position: 4, prev_position: 4 },
+    ];
+    render(<RankingGrid rows={rows} trackedMarkets={new Map([["kw-a", ["SA"]]])} />);
+    expect(screen.getByText("kw-a")).toBeTruthy();
+  });
+});

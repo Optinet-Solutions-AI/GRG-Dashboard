@@ -58,6 +58,7 @@ export function RankingGrid({
   marketVolume,
   trackedMarkets,
   roster,
+  groups,
 }: {
   rows: GridRow[];
   globalVolume?: Map<string, number>;
@@ -82,8 +83,22 @@ export function RankingGrid({
    * of that week, so a keyword added later doesn't appear retroactively in old weeks.
    */
   roster?: { keywords: string[]; countries: string[] };
+  /**
+   * The intended shape of the table, straight from the keyword sheet: one entry per sheet
+   * column, in order, each with its keywords.
+   *
+   * Without it the grid infers grouping from the markets a keyword has rows in, which is only
+   * right when a sweep is complete. On .org it produced one shapeless block — 59 of 98
+   * keywords happened to return in exactly two markets, so they were filed under "Selected
+   * markets" instead of the 20 cross-market + 20-per-country layout the sheet defines.
+   *
+   * It also lets one keyword appear in more than one block, which inference cannot express:
+   * the sheet deliberately reuses a phrasing across country columns, and collapsing those into
+   * a single row would hide it from every market but one.
+   */
+  groups?: { code: string; keywords: string[] }[];
 }) {
-  if (rows.length === 0 && !roster?.keywords.length) {
+  if (rows.length === 0 && !roster?.keywords.length && !groups?.length) {
     return <p className="text-sm text-slate-500">No ranking data for this week.</p>;
   }
 
@@ -116,17 +131,27 @@ export function RankingGrid({
   // single market in column order; keyword_sort still orders rows inside a group.
   const groupRank = (g: string) => (g === "ALL" ? -2 : g === "MULTI" ? -1 : countries.indexOf(g));
   const keywordRank = new Map(keywords.map((k, i) => [k, i]));
-  const ordered = [...keywords].sort(
-    (a, b) => groupRank(groupOf(a)) - groupRank(groupOf(b)) || keywordRank.get(a)! - keywordRank.get(b)!,
-  );
+
+  // One entry per row of the table. With `groups` the sheet decides the shape and a keyword
+  // may appear under several blocks; without it the old inference applies and each keyword
+  // appears exactly once.
+  const entries: { group: string; keyword: string }[] = groups
+    ? groups.flatMap((g) => g.keywords.map((keyword) => ({ group: g.code, keyword })))
+    : [...keywords]
+        .sort((a, b) => groupRank(groupOf(a)) - groupRank(groupOf(b)) || keywordRank.get(a)! - keywordRank.get(b)!)
+        .map((keyword) => ({ group: groupOf(keyword), keyword }));
+
+  // Which markets a row covers: from its block when the sheet defines one, else inferred.
+  const marketsFor = (entry: { group: string; keyword: string }) =>
+    groups ? (entry.group === "ALL" ? countries : [entry.group]) : trackedIn(entry.keyword);
 
   const body: React.ReactNode[] = [];
   let prevGroup: string | null = null;
   let parity = 0;
-  for (const kw of ordered) {
-    const g = groupOf(kw);
+  for (const entry of entries) {
+    const { keyword: kw, group: g } = entry;
     if (g !== prevGroup) {
-      const count = ordered.filter((k) => groupOf(k) === g).length;
+      const count = entries.filter((e) => e.group === g).length;
       body.push(
         <tr key={`hdr-${g}`}>
           <td colSpan={totalCols} className="border-y border-slate-200 bg-slate-100/80 px-3 py-1.5 text-left text-xs font-semibold text-slate-700">
@@ -139,8 +164,9 @@ export function RankingGrid({
       parity = 0;
     }
     const zebra = parity++ % 2 === 1 ? "bg-slate-50/60" : "bg-white";
+    const markets = marketsFor(entry);
     body.push(
-      <tr key={kw} className={`border-b border-slate-100 transition-colors hover:bg-sky-50/60 ${zebra}`}>
+      <tr key={`${g}|${kw}`} className={`border-b border-slate-100 transition-colors hover:bg-sky-50/60 ${zebra}`}>
         <td dir="ltr" className="max-w-[220px] border-r border-slate-200 px-3 py-2 text-left align-middle text-xs leading-snug text-slate-500">
           {keywordEnglish(kw)}
         </td>
@@ -151,7 +177,7 @@ export function RankingGrid({
           {formatVolume(globalVolume?.get(kw))}
         </td>
         {countries.map((c) => {
-          const tracked = trackedIn(kw).includes(c);
+          const tracked = markets.includes(c);
           if (tracked && !byKey.has(`${kw}|${c}`)) {
             // Tracked here, but this week's sweep never returned a result for the pair.
             // Distinct from "not tracked" on purpose — one is how the grid is shaped,

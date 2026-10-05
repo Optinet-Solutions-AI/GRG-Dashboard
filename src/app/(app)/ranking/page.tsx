@@ -53,6 +53,7 @@ export default async function RankingPage({ searchParams }: { searchParams: Prom
   // into weeks it never belonged to.
   const keywordSort = new Map<string, number>();
   const countrySort = new Map<string, number>();
+  const countrySortFromTargets = new Map<string, number>();
   const firstWeek = new Map<string, string>();
   for (const { week, rows } of weekly) {
     for (const r of rows) {
@@ -70,6 +71,39 @@ export default async function RankingPage({ searchParams }: { searchParams: Prom
       .map(([kw]) => kw),
     countries: allCountries,
   });
+
+  // The intended shape of the table, from the keyword sheet (keyword_targets). A site with no
+  // targets keeps the old inferred behaviour, so .com — whose layout is already right — is
+  // untouched. Markets a sweep skipped then show as gaps in the right place instead of
+  // reshaping the whole table.
+  const { data: targetRows } = await supabase
+    .from("keyword_targets")
+    .select("group_code, keywords(text), countries(code, sort_order)")
+    .eq("site_id", selected.id);
+  type TargetRow = { group_code: string; keywords: { text: string } | null; countries: { code: string; sort_order: number | null } | null };
+  const targets = (targetRows ?? []) as unknown as TargetRow[];
+
+  const groupOrder = new Map<string, number>();
+  const groupKeywords = new Map<string, string[]>();
+  const targetMarkets = new Map<string, string[]>();
+  for (const t of targets) {
+    const kw = t.keywords?.text?.trim();
+    const cc = t.countries?.code;
+    if (!kw || !cc || !inLanguage(kw)) continue;
+    countrySortFromTargets.set(cc, t.countries?.sort_order ?? 0);
+    const list = groupKeywords.get(t.group_code) ?? [];
+    if (!list.includes(kw)) list.push(kw);
+    groupKeywords.set(t.group_code, list);
+    // ALL sorts first, then each market in column order.
+    groupOrder.set(t.group_code, t.group_code === "ALL" ? -1 : (t.countries?.sort_order ?? 0));
+    const mk = targetMarkets.get(kw) ?? [];
+    if (!mk.includes(cc)) mk.push(cc);
+    targetMarkets.set(kw, mk);
+  }
+  const targetCountries = [...countrySortFromTargets.entries()].sort((a, b) => a[1] - b[1]).map(([c]) => c);
+  const groups = [...groupKeywords.entries()]
+    .sort((a, b) => (groupOrder.get(a[0]) ?? 0) - (groupOrder.get(b[0]) ?? 0))
+    .map(([code, kws]) => ({ code, keywords: kws }));
 
   // Which markets each keyword targets, gathered across every week on the page. A single
   // week can't answer this: a pair the sweep failed to check is simply absent, which
@@ -160,7 +194,14 @@ export default async function RankingPage({ searchParams }: { searchParams: Prom
                 <h2 className="text-sm font-semibold text-slate-800">Week of {week}</h2>
                 {i === 0 ? <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">Latest</span> : null}
               </div>
-              <RankingGrid rows={rows} globalVolume={volumes.global} marketVolume={volumes.perMarket} trackedMarkets={trackedMarkets} roster={rosterFor(week)} />
+              <RankingGrid
+                rows={rows}
+                globalVolume={volumes.global}
+                marketVolume={volumes.perMarket}
+                trackedMarkets={groups.length ? targetMarkets : trackedMarkets}
+                roster={groups.length ? { keywords: [], countries: targetCountries } : rosterFor(week)}
+                groups={groups.length ? groups : undefined}
+              />
             </section>
           ))}
         </div>
