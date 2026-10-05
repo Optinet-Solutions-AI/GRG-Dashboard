@@ -231,11 +231,13 @@ describe("RankingGrid groups — the sheet decides the shape, not the data that 
     expect(screen.getAllByText("Not in top 100")).toHaveLength(8);
   });
 
-  it("counts each block by its own rows, so the header matches what is listed", () => {
+  it("banners only the blocks no column can name, and counts that block's rows", () => {
     render(<RankingGrid rows={[]} roster={roster} groups={groups} />);
-    // ALL and SA hold 2 keywords each; KW holds the single shared one.
-    expect(screen.getAllByText(/· 2 keywords/)).toHaveLength(2);
-    expect(screen.getAllByText(/· 1 keyword$/)).toHaveLength(1);
+    // "All markets" holds 2 keywords and gets a banner. The SA and KW blocks do not: their
+    // market is already the column header, and their rows fill that column and no other.
+    expect(screen.getByText(/All markets/)).toBeTruthy();
+    expect(screen.getAllByText(/· 2 keywords/)).toHaveLength(1);
+    expect(screen.queryByText(/· 1 keyword$/)).toBeNull();
   });
 
   it("falls back to inferring the shape when no groups are supplied", () => {

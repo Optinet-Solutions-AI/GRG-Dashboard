@@ -149,25 +149,43 @@ export function RankingGrid({
   const body: React.ReactNode[] = [];
   let prevGroup: string | null = null;
   let parity = 0;
+  let startsBlock = false;
   for (const entry of entries) {
     const { keyword: kw, group: g } = entry;
     if (g !== prevGroup) {
-      const count = entries.filter((e) => e.group === g).length;
-      body.push(
-        <tr key={`hdr-${g}`}>
-          <td colSpan={totalCols} className="border-y border-slate-200 bg-slate-100/80 px-3 py-1.5 text-left text-xs font-semibold text-slate-700">
-            {groupLabel(g)}
-            <span className="font-normal text-slate-400"> · {count} keyword{count === 1 ? "" : "s"}</span>
-          </td>
-        </tr>,
-      );
+      // A single-market block needs no banner: its market already names itself in the column
+      // header, and the rows underneath fill that column and no other. Repeating "Saudi Arabia"
+      // across the full width added a line of furniture per block and said nothing new.
+      // "All markets" and "Selected markets" stay — neither corresponds to any column.
+      const named = g === "ALL" || g === "MULTI";
+      if (named) {
+        const count = entries.filter((e) => e.group === g).length;
+        body.push(
+          <tr key={`hdr-${g}`}>
+            <td colSpan={totalCols} className="border-y border-slate-200 bg-slate-100/80 px-3 py-1.5 text-left text-xs font-semibold text-slate-700">
+              {groupLabel(g)}
+              <span className="font-normal text-slate-400"> · {count} keyword{count === 1 ? "" : "s"}</span>
+            </td>
+          </tr>,
+        );
+      }
+      // Without a banner the blocks would run together, so the first row of an unnamed block
+      // carries the rule the banner used to provide.
+      startsBlock = !named && prevGroup !== null;
       prevGroup = g;
       parity = 0;
+    } else {
+      startsBlock = false;
     }
     const zebra = parity++ % 2 === 1 ? "bg-slate-50/60" : "bg-white";
     const markets = marketsFor(entry);
     body.push(
-      <tr key={`${g}|${kw}`} className={`border-b border-slate-100 transition-colors hover:bg-sky-50/60 ${zebra}`}>
+      <tr
+        key={`${g}|${kw}`}
+        className={`border-b border-slate-100 transition-colors hover:bg-sky-50/60 ${zebra} ${
+          startsBlock ? "border-t-2 border-t-slate-300" : ""
+        }`}
+      >
         <td dir="auto" className={`border-r border-slate-100 px-3 py-2 align-middle text-[13px] font-medium leading-snug text-slate-800 ${keywordAlign}`}>
           {kw}
         </td>
