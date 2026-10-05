@@ -8,9 +8,13 @@
 // only works when a sweep is complete, which is exactly when it isn't needed — so it is
 // recorded explicitly here.
 //
-// .com is deliberately NOT seeded by default: its layout is already correct and is the model
-// the other two follow, and a site with no rows in keyword_targets keeps the old inferred
-// behaviour.
+// All three sites are seeded. .com was left out at first because its inferred layout looked
+// right, but inference still misplaced keywords whose sweep came back partial — an Oman
+// keyword with rows in two markets was filed under "Selected markets" instead of Oman.
+//
+// Keywords already tracked on a site but absent from the sheet (the extras adopted because
+// they rank) are kept: they are given targets from the markets they are tracked in, so
+// seeding never removes anything that is currently on the grid.
 import fs from "node:fs";
 import path from "node:path";
 import pg from "pg";
@@ -40,7 +44,7 @@ const args = process.argv.slice(2);
 const DRY = args.includes("--dry");
 const sheetPath = (() => { const i = args.indexOf("--sheet"); return i >= 0 ? args[i + 1] : "C:/tmp/kw.csv"; })();
 const sites = args.reduce((acc, a, i) => (a === "--site" ? [...acc, args[i + 1]] : acc), []);
-const WANT = sites.length ? sites : ["org", "net"];
+const WANT = sites.length ? sites : ["com", "org", "net"];
 
 // Sheet column order after the cross-market column.
 const CC = ["SA", "AE", "QA", "KW", "BH", "OM"];
@@ -134,6 +138,24 @@ async function main() {
           `insert into keyword_targets (site_id, keyword_id, country_id, group_code) values ($1,$2,$3,$4)
            on conflict do nothing`, [site.id, p.kid, p.cid, p.group]);
       }
+
+      // Anything already tracked on this site that the sheet doesn't list — keywords adopted
+      // because they rank — keeps its place, grouped by the markets it is tracked in.
+      const legacy = await client.query(
+        `insert into keyword_targets (site_id, keyword_id, country_id, group_code)
+         select distinct r.site_id, r.keyword_id, r.country_id,
+                case when cnt.n >= (select count(*) from countries) then 'ALL' else co.code end
+         from rankings r
+         join keywords k on k.id = r.keyword_id
+         join countries co on co.id = r.country_id
+         join (select site_id, keyword_id, count(distinct country_id) n
+               from rankings group by 1, 2) cnt
+           on cnt.site_id = r.site_id and cnt.keyword_id = r.keyword_id
+         where r.site_id = $1 and k.language = 'ar'
+           and not exists (select 1 from keyword_targets t
+                           where t.site_id = r.site_id and t.keyword_id = r.keyword_id)
+         on conflict do nothing`, [site.id]);
+      if (legacy.rowCount) console.log(`   + ${legacy.rowCount} targets kept for keywords not in the sheet`);
       await client.query("commit");
     }
   } catch (e) {

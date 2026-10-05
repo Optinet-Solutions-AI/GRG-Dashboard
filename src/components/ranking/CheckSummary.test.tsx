@@ -29,10 +29,9 @@ describe("CheckSummary — 'checked' must not look like 'never checked'", () => 
   it("lists the markets that were checked, labelled the same way the grid labels them", () => {
     render(<CheckSummary check={base} />);
     const body = document.body.textContent ?? "";
-    // marketLabel expands AE to UAE and leaves the other codes alone, so the summary reads
-    // the same as the column headers above it.
+    // Prose uses the short labels; the column headers spell the country out in full.
     expect(body).toContain("UAE");
-    expect(body).toContain("KW");
+    expect(body).toContain("Kuwait");
   });
 
   it("switches wording when some keywords do rank", () => {

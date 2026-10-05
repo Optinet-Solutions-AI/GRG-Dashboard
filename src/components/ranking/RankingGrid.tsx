@@ -1,6 +1,4 @@
-import { Fragment } from "react";
 import { rankCell } from "@/lib/ranking/rank-cell.mjs";
-import { keywordEnglish } from "@/lib/ranking/keyword-labels";
 import type { GridRow } from "@/lib/data/ranking";
 import { formatVolume } from "@/lib/format";
 import { marketLabel } from "@/lib/market-labels";
@@ -55,14 +53,12 @@ function Cell({ position, prev }: { position: number | null; prev: number | null
 export function RankingGrid({
   rows,
   globalVolume,
-  marketVolume,
   trackedMarkets,
   roster,
   groups,
 }: {
   rows: GridRow[];
   globalVolume?: Map<string, number>;
-  marketVolume?: Map<string, number>;
   /**
    * Which markets each keyword is actually tracked in, gathered across the weeks on the
    * page. Without it a market a sweep simply failed to check looks identical to a market
@@ -108,7 +104,7 @@ export function RankingGrid({
     .sort((a, b) => a[1] - b[1]).map(([k]) => k);
   const byKey = new Map(rows.map((r) => [`${r.keyword}|${r.country}`, r]));
 
-  const totalCols = 3 + countries.length * 2;
+  const totalCols = 2 + countries.length;
   const headBase = "bg-slate-50 px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500";
 
   // Which markets a keyword targets: the page-wide picture when we have it, else this
@@ -167,10 +163,7 @@ export function RankingGrid({
     const markets = marketsFor(entry);
     body.push(
       <tr key={`${g}|${kw}`} className={`border-b border-slate-100 transition-colors hover:bg-sky-50/60 ${zebra}`}>
-        <td dir="ltr" className="max-w-[220px] border-r border-slate-200 px-3 py-2 text-left align-middle text-xs leading-snug text-slate-500">
-          {keywordEnglish(kw)}
-        </td>
-        <td dir="rtl" className="max-w-[280px] border-r border-slate-100 px-3 py-2 align-middle font-medium leading-snug text-slate-800">
+        <td dir="auto" className="max-w-[420px] border-r border-slate-100 px-3 py-2 align-middle font-medium leading-snug text-slate-800">
           {kw}
         </td>
         <td className="border-r border-slate-100 px-3 py-2 text-right align-middle tabular-nums text-xs text-slate-500">
@@ -183,73 +176,83 @@ export function RankingGrid({
             // Distinct from "not tracked" on purpose — one is how the grid is shaped,
             // the other is a hole in the data.
             return (
-              <Fragment key={c}>
-                <td
-                  title="The rank checker didn't complete this keyword in this market — the next sweep fills it in"
-                  className="border-l-2 border-slate-100 border-l-slate-200 px-3 py-2 text-center align-middle"
-                >
-                  {/* A bare dash here read as an empty cell, so it says what it is: the
-                      check is missing, which is NOT the same as "not ranking". */}
-                  <span className="rounded bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-700 ring-1 ring-amber-200">
-                    Not checked
-                  </span>
-                </td>
-                <td className="px-3 py-2 text-center align-middle tabular-nums text-xs text-slate-400">
-                  {formatVolume(marketVolume?.get(`${kw}|${c}`))}
-                </td>
-              </Fragment>
+              <td
+                key={c}
+                title="Not in the top 100 — this market hasn't been returned by a check yet, so it's still outstanding"
+                className="border-l-2 border-slate-100 border-l-slate-200 px-3 py-2 text-center align-middle"
+              >
+                {/* Reads the same as a genuine miss, because for the reader the outcome is
+                    the same: it isn't ranking. The dotted underline and the tooltip keep the
+                    difference recoverable — these are the pairs still waiting on a check, and
+                    the week header counts them. */}
+                <span className="text-xs text-slate-400 decoration-amber-400/70 decoration-dotted underline-offset-4 [text-decoration-line:underline]">
+                  Not in top 100
+                </span>
+              </td>
             );
           }
           if (!tracked) {
             // keyword isn't tracked in this market — mute it so the market it DOES target stands out
             return (
-              <Fragment key={c}>
-                <td title="Not tracked in this market" className="border-l-2 border-slate-100 border-l-slate-200 bg-slate-50/70 px-3 py-2 text-center align-middle text-slate-300">·</td>
-                <td className="bg-slate-50/70 px-3 py-2 text-center align-middle text-slate-300"></td>
-              </Fragment>
+              <td
+                key={c}
+                title="Not tracked in this market"
+                className="border-l-2 border-slate-100 border-l-slate-200 bg-slate-50/70 px-3 py-2 text-center align-middle text-slate-300"
+              >
+                ·
+              </td>
             );
           }
           const row = byKey.get(`${kw}|${c}`);
           return (
-            <Fragment key={c}>
-              <td className="border-l-2 border-slate-100 border-l-slate-200 px-3 py-2 text-center align-middle">
-                <Cell position={row?.position ?? null} prev={row?.prev_position ?? null} />
-              </td>
-              <td className="px-3 py-2 text-center align-middle tabular-nums text-xs text-slate-400">
-                {formatVolume(marketVolume?.get(`${kw}|${c}`))}
-              </td>
-            </Fragment>
+            <td key={c} className="border-l-2 border-slate-100 border-l-slate-200 px-3 py-2 text-center align-middle">
+              <Cell position={row?.position ?? null} prev={row?.prev_position ?? null} />
+            </td>
           );
         })}
       </tr>,
     );
   }
 
+  // Pairs that read "Not in top 100" only because nothing has come back for them yet. They
+  // look like a genuine miss in the table on purpose, so the count is what keeps them visible.
+  let awaiting = 0;
+  let tracked = 0;
+  for (const e of entries) {
+    for (const c of marketsFor(e)) {
+      tracked++;
+      if (!byKey.has(`${e.keyword}|${c}`)) awaiting++;
+    }
+  }
+
   return (
-    <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      {awaiting > 0 && (
+        <p className="border-b border-slate-200 bg-amber-50/60 px-3 py-2 text-xs text-amber-800">
+          <span className="font-semibold">{awaiting}</span> of {tracked} keyword/market pairs have not
+          been returned by a check yet. They read below as not ranking, which is accurate — but they are
+          still outstanding rather than confirmed, and carry a dotted underline.
+        </p>
+      )}
+      <div className="overflow-x-auto">
       <table className="w-full border-collapse text-sm">
         <thead>
+          {/* One row, one column per market. The per-market SV column repeated the same
+              placeholder beside every rank and doubled the width of the table; the header
+              already names the market, so the rank needs no second column under it. */}
           <tr>
-            <th rowSpan={2} className={`border-b border-r border-slate-200 text-left ${headBase}`}>English</th>
-            <th rowSpan={2} className={`border-b border-r border-slate-200 text-right ${headBase}`}>Keyword</th>
-            <th rowSpan={2} title="Global search volume" className={`border-b border-r border-slate-200 text-right ${headBase}`}>GSV</th>
+            <th className={`border-b border-r border-slate-200 text-right ${headBase}`}>Keyword</th>
+            <th title="Global search volume" className={`border-b border-r border-slate-200 text-right ${headBase}`}>GSV</th>
             {countries.map((c) => (
-              <th key={c} colSpan={2} className={`border-b border-l-2 border-slate-200 border-l-slate-300 text-center ${headBase}`}>
+              <th key={c} className={`border-b border-l-2 border-slate-200 border-l-slate-300 text-center ${headBase}`}>
                 {FLAG[c] ? `${FLAG[c]} ` : ""}{marketLabel(c)}
               </th>
-            ))}
-          </tr>
-          <tr>
-            {countries.map((c) => (
-              <Fragment key={c}>
-                <th className="border-b border-l-2 border-slate-200 border-l-slate-300 bg-slate-50 px-2 py-1 text-center text-[10px] font-semibold uppercase tracking-wide text-slate-400">Rank</th>
-                <th title="Search volume" className="border-b border-slate-200 bg-slate-50 px-2 py-1 text-center text-[10px] font-semibold uppercase tracking-wide text-slate-400">SV</th>
-              </Fragment>
             ))}
           </tr>
         </thead>
         <tbody>{body}</tbody>
       </table>
+      </div>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { marketLabel } from "@/lib/market-labels";
+import { marketLabelShort } from "@/lib/market-labels";
 
 export type RankingCheck = {
   week_date: string;
@@ -20,7 +20,7 @@ export type RankingCheck = {
  */
 export function CheckSummary({ check }: { check: RankingCheck }) {
   const markets = check.markets.length
-    ? check.markets.map((m) => marketLabel(m)).join(", ")
+    ? check.markets.map((m) => marketLabelShort(m)).join(", ")
     : "no markets recorded";
   const none = check.pairs_ranked === 0;
 

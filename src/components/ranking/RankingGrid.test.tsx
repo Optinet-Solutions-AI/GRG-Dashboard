@@ -9,27 +9,29 @@ const rows: GridRow[] = [
 ];
 
 describe("RankingGrid volumes", () => {
-  it("renders GSV + per-country Rank/SV columns with their values", () => {
-    render(
-      <RankingGrid
-        rows={rows}
-        globalVolume={new Map([["استرداد", 12000]])}
-        marketVolume={new Map([["استرداد|AE", 8100]])}
-      />,
-    );
-    // Global column header + value
+  it("renders GSV, and gives each market a single column", () => {
+    render(<RankingGrid rows={rows} globalVolume={new Map([["استرداد", 12000]])} />);
     expect(screen.getByText("GSV")).toBeTruthy();
     expect(screen.getByText("12,000")).toBeTruthy();
-    // Each country is split into a Rank column and an SV column
-    expect(screen.getByText("Rank")).toBeTruthy();
-    expect(screen.getByText("SV")).toBeTruthy();
-    // Per-country search volume shows in its own cell
-    expect(screen.getByText("8,100")).toBeTruthy();
+    // The per-market SV sub-column is gone: it repeated the same placeholder beside every
+    // rank and doubled the table's width, and the header already names the market.
+    expect(screen.queryByText("Rank")).toBeNull();
+    expect(screen.queryByText("SV")).toBeNull();
   });
-  it("renders em dashes when no volume maps are provided", () => {
+
+  it("names each market in full rather than printing its country code", () => {
+    render(<RankingGrid rows={rows} />);
+    expect(screen.getByText(/United Arab Emirates/)).toBeTruthy();
+  });
+
+  it("drops the English column from the Arabic grid", () => {
+    render(<RankingGrid rows={rows} />);
+    expect(screen.queryByText("English")).toBeNull();
+  });
+  it("renders an em dash for a keyword with no global volume", () => {
     render(<RankingGrid rows={rows} />);
     // GSV cell + SV cell both fall back to —
-    expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(1);
   });
 });
 
@@ -85,8 +87,9 @@ describe("RankingGrid market grouping", () => {
     expect(screen.getAllByText(/All markets/).length).toBe(1);
     expect(screen.getByText(/· 2 keywords/)).toBeTruthy();
     // and the hole reads as missing data, not as "not tracked here"
-    expect(screen.getByText("Not checked")).toBeTruthy();
-    expect(screen.getByTitle(/didn't complete this keyword in this market/)).toBeTruthy();
+    expect(screen.getAllByText("Not in top 100").length).toBeGreaterThan(0);
+    // The hole is still identifiable as missing data rather than a confirmed miss.
+    expect(screen.getAllByTitle(/hasn't been returned by a check yet/).length).toBeGreaterThan(0);
   });
 
   it("still mutes a market the keyword genuinely does not target", () => {
@@ -125,34 +128,36 @@ describe("RankingGrid movement labels", () => {
   });
 })
 
-describe("RankingGrid missing checks read as text, not punctuation", () => {
-  // A market only gets a column if SOME row in the week has it, so a second keyword
-  // holds the QA column open while the keyword under test is missing its QA check.
+describe("RankingGrid — a pair with no result reads as a miss, but stays recoverable", () => {
+  const tracked = new Map([["kw", ["SA", "QA"]]]);
+  const roster = { keywords: ["kw"], countries: ["SA", "QA"] };
   const rows: GridRow[] = [
     { keyword: "kw", keyword_sort: 0, country: "SA", country_sort: 0, position: null, prev_position: null },
-    { keyword: "other", keyword_sort: 1, country: "SA", country_sort: 0, position: 4, prev_position: 4 },
-    { keyword: "other", keyword_sort: 1, country: "QA", country_sort: 1, position: 9, prev_position: 9 },
   ];
-  const tracked = new Map([["kw", ["SA", "QA"]], ["other", ["SA", "QA"]]]);
+  const text = () => document.body.textContent ?? "";
 
-  it("says 'Not checked' rather than a dash a reader mistakes for an empty cell", () => {
-    render(<RankingGrid rows={rows} trackedMarkets={tracked} />);
-    expect(screen.getByText("Not checked")).toBeTruthy();
-    expect(screen.queryByText("–")).toBeNull();
+  it("reads 'Not in top 100', the same as a market that was checked and does not rank", () => {
+    // The outcome for the reader is identical — it isn't ranking — so the table says so
+    // rather than exposing our bookkeeping in every cell.
+    render(<RankingGrid rows={rows} roster={roster} trackedMarkets={tracked} />);
+    expect(screen.getAllByText("Not in top 100")).toHaveLength(2);
+    expect(screen.queryByText("Not checked")).toBeNull();
   });
 
-  it("keeps it distinct from a market that was checked and simply isn't ranking", () => {
-    render(<RankingGrid rows={rows} trackedMarkets={tracked} />);
-    expect(screen.getByText("Not in top 100")).toBeTruthy(); // kw in SA: checked, unranked
-    expect(screen.getByText("Not checked")).toBeTruthy();    // kw in QA: never checked
+  it("still counts the outstanding pairs, so a gap in coverage is never silent", () => {
+    render(<RankingGrid rows={rows} roster={roster} trackedMarkets={tracked} />);
+    // kw/QA never came back; kw/SA did and simply does not rank.
+    expect(text()).toMatch(/have not been returned by a check yet/);
+    expect(text()).toMatch(/1 of 2 keyword\/market pairs/);
   });
 
-  it("drops a market from the week entirely when nothing in it was checked", () => {
-    // OM is tracked but has no row anywhere this week -> no column, so no phantom cells.
-    const t2 = new Map([["kw", ["SA", "QA", "OM"]], ["other", ["SA", "QA", "OM"]]]);
-    render(<RankingGrid rows={rows} trackedMarkets={t2} />);
-    expect(screen.queryByText(/Oman|OM/)).toBeNull();
-    expect(screen.getAllByText("Not checked").length).toBe(1); // QA only, not OM
+  it("says nothing about outstanding pairs when every one has a result", () => {
+    const full: GridRow[] = [
+      { keyword: "kw", keyword_sort: 0, country: "SA", country_sort: 0, position: 5, prev_position: null },
+      { keyword: "kw", keyword_sort: 0, country: "QA", country_sort: 1, position: null, prev_position: null },
+    ];
+    render(<RankingGrid rows={full} roster={roster} trackedMarkets={tracked} />);
+    expect(text()).not.toMatch(/have not been returned/);
   });
 });
 
@@ -172,12 +177,12 @@ describe("RankingGrid roster — every tracked keyword holds its place", () => {
     expect(screen.getByText(/· 3 keywords/)).toBeTruthy();
   });
 
-  it("marks the skipped ones as not checked, never as a ranking result", () => {
+  it("shows the skipped ones as not ranking, and counts them as outstanding", () => {
     render(<RankingGrid rows={rows} roster={roster} trackedMarkets={tracked} />);
     // kw-a/SA has a real position; the other five cells are missing data.
     expect(screen.getByText("4")).toBeTruthy();
-    expect(screen.getAllByText("Not checked").length).toBe(5);
-    expect(screen.queryByText("Not in top 100")).toBeNull();
+    expect(screen.getAllByText("Not in top 100")).toHaveLength(5);
+    expect(screen.queryByText("Not checked")).toBeNull();
   });
 
   it("keeps every market column even when a market returned nothing at all", () => {
@@ -220,10 +225,10 @@ describe("RankingGrid groups — the sheet decides the shape, not the data that 
       { keyword: "cross-1", keyword_sort: 0, country: "SA", country_sort: 0, position: 5, prev_position: null },
     ];
     render(<RankingGrid rows={rows} roster={roster} groups={groups} />);
-    // cross-1: one real position + 2 "Not checked". sa-only + shared(SA): 1 each. shared(KW): 1.
-    // cross-2: 3. Country rows must NOT claim the markets they don't target.
+    // cross-1: one real position + 2 blanks. cross-2: 3. sa-only + shared(SA): 1 each.
+    // shared(KW): 1. Country rows must NOT claim the markets they don't target.
     expect(screen.getByText("5")).toBeTruthy();
-    expect(screen.getAllByText("Not checked")).toHaveLength(8);
+    expect(screen.getAllByText("Not in top 100")).toHaveLength(8);
   });
 
   it("counts each block by its own rows, so the header matches what is listed", () => {

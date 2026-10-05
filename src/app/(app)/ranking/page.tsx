@@ -197,7 +197,6 @@ export default async function RankingPage({ searchParams }: { searchParams: Prom
               <RankingGrid
                 rows={rows}
                 globalVolume={volumes.global}
-                marketVolume={volumes.perMarket}
                 trackedMarkets={groups.length ? targetMarkets : trackedMarkets}
                 roster={groups.length ? { keywords: [], countries: targetCountries } : rosterFor(week)}
                 groups={groups.length ? groups : undefined}
