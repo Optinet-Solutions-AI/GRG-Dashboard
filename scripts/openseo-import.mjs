@@ -98,6 +98,25 @@ async function importFile(client, file, rowsIn, domain) {
   const { rows: priorRows } = await client.query(
     "select 1 from rankings where site_id = $1 and week_date < $2 limit 1", [site.id, target.week]);
   const establishing = priorRows.length === 0;
+
+  // A keyword that belongs to ANOTHER site's sheet roster is not this site's to adopt, however
+  // the file is labelled. The first .com export turned out to contain .net keywords, and three
+  // of them were adopted onto .com and shown as freshly ranked on a site they were never
+  // checked for. Keywords already tracked here are exempt — this only blocks new adoptions.
+  const foreign = new Set((await client.query(
+    `select distinct k.text from keyword_targets kt join keywords k on k.id = kt.keyword_id
+     where kt.site_id <> $1
+       and not exists (select 1 from keyword_targets t
+                       where t.site_id = $1 and t.keyword_id = kt.keyword_id)`, [site.id],
+  )).rows.map((r) => keywordKey(r.text)));
+
+  const trespassers = [...new Set(rows.map((r) => r.keyword))]
+    .filter((k) => !tracked.has(k) && foreign.has(keywordKey(k)));
+  if (trespassers.length) {
+    const bad = new Set(trespassers.map(keywordKey));
+    rows = rows.filter((r) => !bad.has(keywordKey(r.keyword)));
+  }
+
   const { adopt, skip, known } = classifyKeywords(rows, tracked, { establishing });
 
   const countries = new Map((await client.query("select id, code from countries")).rows
@@ -110,7 +129,7 @@ async function importFile(client, file, rowsIn, domain) {
   const summary = {
     file: path.basename(file), site: domain, week: target.week, mode: target.mode,
     rows: rows.length, known: known.length, adopted: adopt.length, skipped: skip.length,
-    establishing, skippedByLanguage,
+    establishing, skippedByLanguage, trespassers: trespassers.length,
   };
   if (DRY) return { ...summary, written: 0, ranked: 0, dryRun: true };
 
@@ -132,12 +151,18 @@ async function importFile(client, file, rowsIn, domain) {
         && countries.has(r.countryCode))
       .map((r) => ({ kid: keywords.get(keywordKey(r.keyword)), cid: countries.get(r.countryCode), pos: r.current }));
 
+    const basename = path.basename(file);
     if (target.mode === "new") {
       // The export is authoritative for a week it opens: clear it, then write exactly its pairs.
       await client.query("delete from rankings where site_id = $1 and week_date = $2", [site.id, target.week]);
     } else {
-      // Merging into a week another part of the same sweep opened: replace only this file's
-      // pairs so the earlier part survives.
+      // Merging into a week another part of the same sweep opened. Clear what THIS file wrote
+      // last time — not just the pairs it still contains — so a corrected export takes its own
+      // stale rows with it, then clear the pairs it is about to write in case another file
+      // owned them.
+      await client.query(
+        "delete from rankings where site_id = $1 and week_date = $2 and source_file = $3",
+        [site.id, target.week, basename]);
       await client.query(
         `delete from rankings where site_id = $1 and week_date = $2
          and (keyword_id, country_id) in (select unnest($3::uuid[]), unnest($4::uuid[]))`,
@@ -145,9 +170,26 @@ async function importFile(client, file, rowsIn, domain) {
     }
     for (const p of payload) {
       await client.query(
-        "insert into rankings (week_date, site_id, country_id, keyword_id, position) values ($1,$2,$3,$4,$5)",
-        [target.week, site.id, p.cid, p.kid, p.pos]);
+        `insert into rankings (week_date, site_id, country_id, keyword_id, position, source_file)
+         values ($1,$2,$3,$4,$5,$6)`,
+        [target.week, site.id, p.cid, p.kid, p.pos, basename]);
     }
+    // A keyword occasionally ranks in a market its sheet column doesn't cover. The roster
+    // decides the table's shape, so such a pair would be drawn as "not tracked here" and the
+    // position hidden — a measured ranking must never disappear. Only pairs that actually rank
+    // earn a target this way; the ones that came back NR carry no information and would push
+    // the blocks past the 20 the sheet defines.
+    const strays = await client.query(
+      `insert into keyword_targets (site_id, keyword_id, country_id, group_code)
+       select distinct r.site_id, r.keyword_id, r.country_id, co.code
+       from rankings r
+       join countries co on co.id = r.country_id
+       where r.site_id = $1 and r.week_date = $2 and r.position is not null
+         and not exists (select 1 from keyword_targets kt
+                         where kt.site_id = r.site_id and kt.keyword_id = r.keyword_id
+                           and kt.country_id = r.country_id)
+       on conflict do nothing`, [site.id, target.week]);
+
     // Record that the check HAPPENED, separately from what it found. Without this a site
     // that was checked and ranked nowhere (.org's first run: 50 keywords, none in the top
     // 100) is indistinguishable from one that was never checked — both store zero rows.
@@ -192,6 +234,7 @@ async function importFile(client, file, rowsIn, domain) {
     await client.query("commit");
     return {
       ...summary, written: payload.length, ranked: payload.filter((p) => p.pos !== null).length,
+      strays: strays.rowCount,
       checkedPairs: contribution.pairs, checkedRanked: contribution.ranked,
     };
   } catch (e) {
@@ -258,6 +301,8 @@ async function main() {
         log(`${r.file} -> ${r.site} week ${r.week} (${r.mode}): ${r.written} pairs, ${r.ranked} ranking; ` +
             `${r.known} tracked, ${r.adopted} adopted, ${r.skipped} skipped as unranked` +
             (r.skippedByLanguage ? `, ${r.skippedByLanguage} skipped (language not tracked here)` : "") +
+            (r.trespassers ? `, ${r.trespassers} rejected (belong to another site)` : "") +
+            (r.strays ? `, ${r.strays} ranked outside their planned markets` : "") +
             (r.dryRun ? " [DRY]" : ""));
         if (!DRY) { state[file] = { key, importedAt: new Date().toISOString(), ...r }; writeState(state); }
       } catch (e) {
