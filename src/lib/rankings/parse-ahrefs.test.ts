@@ -56,3 +56,50 @@ describe("decodeExport", () => {
     expect(decodeExport(bytes)).toContain("Keyword");
   });
 });
+
+describe("ranking-history layout — the one that failed to upload", () => {
+  // Exactly the columns the tracker emits for "Ranking history". The upload rejected these as
+  // "Unrecognized export" because it only knew the Overview layout's column names.
+  const HEAD = [
+    "Keyword", "Tags", "Volume", "Position", "Position: Date", "Position 1 day ago",
+    "Position 1 day ago: Change", "Position 1 day ago: Date", "Position 7 days ago",
+    "Position 7 days ago: Change", "Position 7 days ago: Date", "Country code", "Location",
+    "Language", "Updated",
+  ];
+  const line = (cells: string[]) => cells.map((c) => `"${c}"`).join(TAB);
+  const text = [
+    line(HEAD),
+    line(["KW-AR", "", "30", "23", "2026-10-13 01:59:38", "23", "0",
+      "2026-10-13 01:59:38", "28", "-5", "2026-10-06 01:59:32", "AE", "United Arab Emirates", "ar",
+      "2026-10-13 01:59:38"]),
+    line(["KW-NR", "", "30", "", "2026-10-13 17:17:39", "", "", "2026-10-13 17:17:39",
+      "", "", "2026-10-06 17:17:37", "OM", "Oman", "ar", "2026-10-13 17:17:39"]),
+  ].join("\n");
+
+  it("parses it instead of rejecting the file", () => {
+    const rows = parseAhrefsExport(text);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toEqual({
+      keyword: "KW-AR", countryCode: "AE", current: 23, previous: 28, date: "2026-10-13",
+    });
+  });
+
+  it("takes 'Position 7 days ago' as the previous position, so movement is week over week", () => {
+    expect(parseAhrefsExport(text)[0].previous).toBe(28);
+  });
+
+  it("reads a blank Position as not ranking, not as zero", () => {
+    expect(parseAhrefsExport(text)[1].current).toBeNull();
+  });
+
+  it("still parses the Overview layout it always handled", () => {
+    const overview = [HEADER, row("kw", "18", "16", "SA", "2026-06-09")].join("\n");
+    expect(parseAhrefsExport(overview)[0]).toEqual({
+      keyword: "kw", countryCode: "SA", current: 16, previous: 18, date: "2026-06-09",
+    });
+  });
+
+  it("names both accepted layouts when a file really is unusable", () => {
+    expect(() => parseAhrefsExport("Foo\tBar\n1\t2")).toThrow(/Current position[\s\S]*Position/);
+  });
+});

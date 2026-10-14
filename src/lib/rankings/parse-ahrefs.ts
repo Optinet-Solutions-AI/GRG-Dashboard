@@ -50,12 +50,21 @@ export function parseAhrefsExport(text: string): AhrefsRow[] {
   const header = lines[0].split(delim).map(clean);
   const idx = (name: string) => header.findIndex((h) => h.toLowerCase() === name.toLowerCase());
   const iKw = idx("Keyword");
-  const iPrev = idx("Previous position");
-  const iCur = idx("Current position");
   const iCc = idx("Country code");
-  const iDate = idx("Current update date");
+  // The tracker has two export layouts and the column names differ between them. "Overview"
+  // calls them Current position / Previous position / Current update date; "Ranking history"
+  // calls them Position / Position 7 days ago / Position: Date. Uploading the second one used
+  // to fail with "Unrecognized export", which reads as a broken file rather than a layout this
+  // parser hadn't been taught.
+  const first = (...names: string[]) => names.map(idx).find((i) => i >= 0) ?? -1;
+  const iCur = first("Current position", "Position");
+  const iPrev = first("Previous position", "Position 7 days ago");
+  const iDate = first("Current update date", "Position: Date", "Updated");
   if (iKw < 0 || iCur < 0 || iCc < 0) {
-    throw new Error("Unrecognized export: missing Keyword / Current position / Country code columns.");
+    throw new Error(
+      "Unrecognized export: expected a Keyword column, a Country code column, and either " +
+        "\"Current position\" (Overview export) or \"Position\" (Ranking history export).",
+    );
   }
   return lines.slice(1).map((line) => {
     const f = line.split(delim);

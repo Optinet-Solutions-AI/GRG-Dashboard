@@ -45,6 +45,30 @@ export async function importRankings(_prev: Result | undefined, formData: FormDa
   if (!weekCur) return { error: "Could not read the export's update/check date." };
   const weekPrev = minus7(weekCur);
 
+  // The roster decides what this site shows. An export still carries keywords that were dropped
+  // from it, so without this an upload would quietly put them back — the same hole the
+  // scheduled importer had. Keywords are not auto-created either when a roster exists.
+  const { data: rosterRaw } = await supabase
+    .from("keyword_targets")
+    .select("keywords(text)")
+    .eq("site_id", siteId);
+  const rosterKeys = new Set(
+    ((rosterRaw ?? []) as unknown as Array<{ keywords: { text: string } | null }>)
+      .map((r) => r.keywords?.text?.trim().toLowerCase())
+      .filter((t): t is string => Boolean(t)),
+  );
+  let offRoster = 0;
+  const rosterRows = rosterKeys.size
+    ? siteRows.filter((r) => {
+        const ok = rosterKeys.has(r.keyword.trim().toLowerCase());
+        if (!ok) offRoster++;
+        return ok;
+      })
+    : siteRows;
+  if (!rosterRows.length) {
+    return { error: `No rows in this export match ${siteDomain}'s current keyword roster.` };
+  }
+
   const [{ data: kwsRaw }, { data: ctsRaw }] = await Promise.all([
     supabase.from("keywords").select("id, text, sort_order").order("sort_order"),
     supabase.from("countries").select("id, code, sort_order"),
@@ -57,8 +81,10 @@ export async function importRankings(_prev: Result | undefined, formData: FormDa
 
   // Auto-create keywords present in the export but missing from the DB (parity with the CLI importer),
   // grouped by country sort_order then text so per-country blocks stay together in the grid.
+  // Skipped entirely once the site has a roster: the roster is then the only thing that decides
+  // which keywords exist for it, and anything off it has already been filtered out above.
   const missing = new Map<string, number>();
-  for (const r of siteRows) {
+  for (const r of rosterKeys.size ? [] : rosterRows) {
     if (!r.keyword || kwMap.has(r.keyword) || !ccMap.has(r.countryCode)) continue;
     const cs = ccSort.get(r.countryCode) ?? 9999;
     missing.set(r.keyword, Math.min(missing.get(r.keyword) ?? Infinity, cs));
@@ -81,29 +107,40 @@ export async function importRankings(_prev: Result | undefined, formData: FormDa
     .from("rankings").select("id", { count: "exact", head: true }).eq("site_id", siteId);
   const hasHistory = (existingCount ?? 0) > 0;
 
-  const payload: Array<{ week_date: string; site_id: string; country_id: string; keyword_id: string; position: number | null }> = [];
+  const source = file.name || null;
+  const payload: Array<{ week_date: string; site_id: string; country_id: string; keyword_id: string; position: number | null; source_file: string | null }> = [];
   const unmatched = new Set<string>();
   let matched = 0;
-  for (const r of siteRows) {
+  for (const r of rosterRows) {
     const kid = kwMap.get(r.keyword);
     const cid = ccMap.get(r.countryCode);
     if (!kid || !cid) { unmatched.add(`${r.keyword || "?"} / ${r.countryCode || "?"}`); continue; }
     matched++;
-    if (!hasHistory) payload.push({ week_date: weekPrev, site_id: siteId, country_id: cid, keyword_id: kid, position: r.previous });
-    payload.push({ week_date: weekCur, site_id: siteId, country_id: cid, keyword_id: kid, position: r.current });
+    if (!hasHistory) payload.push({ week_date: weekPrev, site_id: siteId, country_id: cid, keyword_id: kid, position: r.previous, source_file: source });
+    payload.push({ week_date: weekCur, site_id: siteId, country_id: cid, keyword_id: kid, position: r.current, source_file: source });
   }
   if (!payload.length) {
     return { error: "No rows matched this site's keywords/countries — is the export for this project?" };
   }
 
-  // Authoritative-per-week: the uploaded export is the source of truth for the week(s) it writes.
-  // Delete those weeks first, then insert only the export's pairs. This keeps the grid SPARSE
-  // (country-specific keywords stay muted "·" in markets they don't target) and self-heals any
-  // full-grid placeholder rows a stray "Add new week" may have left — so a plain re-upload always
-  // produces a clean week with no manual DB cleanup.
+  // The upload is authoritative for what IT covers, not for the whole week. A week is now fed by
+  // several exports — one per site from the tracker, plus whatever the scheduled importer picked
+  // up — so clearing the entire week would delete another file's work. Two targeted deletes
+  // instead: whatever this same file wrote before (so a corrected re-upload drops its own stale
+  // rows), and the exact pairs about to be written (so a different file's claim on them is
+  // replaced rather than duplicated).
   const weeksToWrite = [...new Set(payload.map((p) => p.week_date))];
-  const del = await supabase.from("rankings").delete().eq("site_id", siteId).in("week_date", weeksToWrite);
-  if (del.error) return { error: del.error.message };
+  if (source) {
+    const delOwn = await supabase.from("rankings").delete()
+      .eq("site_id", siteId).in("week_date", weeksToWrite).eq("source_file", source);
+    if (delOwn.error) return { error: delOwn.error.message };
+  }
+  const delPairs = await supabase.from("rankings").delete()
+    .eq("site_id", siteId)
+    .in("week_date", weeksToWrite)
+    .in("keyword_id", [...new Set(payload.map((p) => p.keyword_id))])
+    .in("country_id", [...new Set(payload.map((p) => p.country_id))]);
+  if (delPairs.error) return { error: delPairs.error.message };
   const { error } = await supabase.from("rankings").insert(payload);
   if (error) return { error: error.message };
 
@@ -111,6 +148,7 @@ export async function importRankings(_prev: Result | undefined, formData: FormDa
   const ranked = payload.filter((p) => p.week_date === weekCur && p.position !== null).length;
   const parts = [`Imported ${matched} keyword×country pairs for week ${weekCur}: ${ranked} ranking, ${matched - ranked} not.`];
   if (created) parts.push(`${created} new keyword${created === 1 ? "" : "s"} added.`);
+  if (offRoster) parts.push(`${offRoster} row${offRoster === 1 ? "" : "s"} skipped — not on this site's keyword roster.`);
   if (unmatched.size) parts.push(`${unmatched.size} unmatched skipped.`);
   return { ok: true, message: parts.join(" ") };
 }
