@@ -19,7 +19,7 @@ import path from "node:path";
 import pg from "pg";
 import {
   parseOpenSeoCsv, classifyKeywords, pickWeek, siteFromFilename, exportDate, siteFromKeywords,
-  keywordKey, keywordLanguage,
+  keywordKey, keywordLanguage, decodeExport, isRankingHistory, parseRankingHistory,
 } from "../src/lib/rankings/openseo.mjs";
 
 // Per-site keyword sets, used only when a filename doesn't name its site.
@@ -117,6 +117,26 @@ async function importFile(client, file, rowsIn, domain) {
     rows = rows.filter((r) => !bad.has(keywordKey(r.keyword)));
   }
 
+  // Once a site has a roster, the roster decides what the dashboard shows — full stop. An
+  // export still carries keywords that were dropped from it, and some of them still rank; left
+  // alone the adoption rule would quietly put them back, which is exactly what replacing a
+  // roster is meant to stop.
+  const rosterTexts = (await client.query(
+    `select distinct k.text from keyword_targets kt join keywords k on k.id = kt.keyword_id
+     where kt.site_id = $1`, [site.id],
+  )).rows.map((r) => r.text);
+  const rosterKeys = new Set(rosterTexts.map(keywordKey));
+  let offRoster = 0;
+  if (rosterKeys.size) {
+    const before = rows.length;
+    rows = rows.filter((r) => rosterKeys.has(keywordKey(r.keyword)));
+    offRoster = before - rows.length;
+    // Being on the roster IS being tracked. Otherwise a roster keyword with no result yet falls
+    // to the "adopt only if it ranks" rule and is dropped — the opposite of what a roster means,
+    // and it would show as outstanding forever while its NR result sat unstored.
+    for (const t of rosterTexts) tracked.add(t);
+  }
+
   const { adopt, skip, known } = classifyKeywords(rows, tracked, { establishing });
 
   const countries = new Map((await client.query("select id, code from countries")).rows
@@ -129,7 +149,7 @@ async function importFile(client, file, rowsIn, domain) {
   const summary = {
     file: path.basename(file), site: domain, week: target.week, mode: target.mode,
     rows: rows.length, known: known.length, adopted: adopt.length, skipped: skip.length,
-    establishing, skippedByLanguage, trespassers: trespassers.length,
+    establishing, skippedByLanguage, trespassers: trespassers.length, offRoster,
   };
   if (DRY) return { ...summary, written: 0, ranked: 0, dryRun: true };
 
@@ -185,6 +205,8 @@ async function importFile(client, file, rowsIn, domain) {
        from rankings r
        join countries co on co.id = r.country_id
        where r.site_id = $1 and r.week_date = $2 and r.position is not null
+         and exists (select 1 from keyword_targets kt
+                     where kt.site_id = r.site_id and kt.keyword_id = r.keyword_id)
          and not exists (select 1 from keyword_targets kt
                          where kt.site_id = r.site_id and kt.keyword_id = r.keyword_id
                            and kt.country_id = r.country_id)
@@ -279,7 +301,11 @@ async function main() {
       // NOT recorded, so a transient outage retries on the next pass.
       let rows, domain;
       try {
-        rows = parseOpenSeoCsv(fs.readFileSync(file, "utf8"));
+        // Two export shapes land here: OpenSEO's own CSV and the rank tracker's UTF-16
+        // "ranking history" TSV. Encoding is sniffed because the latter is UTF-16 LE, which
+        // read as UTF-8 parses into nonsense rather than failing.
+        const text = decodeExport(fs.readFileSync(file));
+        rows = isRankingHistory(text) ? parseRankingHistory(text) : parseOpenSeoCsv(text);
         domain = siteFromFilename(path.basename(file));
         if (!domain) {
           // The operator names these files by hand. Rather than skip one that doesn't match
@@ -302,6 +328,7 @@ async function main() {
             `${r.known} tracked, ${r.adopted} adopted, ${r.skipped} skipped as unranked` +
             (r.skippedByLanguage ? `, ${r.skippedByLanguage} skipped (language not tracked here)` : "") +
             (r.trespassers ? `, ${r.trespassers} rejected (belong to another site)` : "") +
+            (r.offRoster ? `, ${r.offRoster} skipped (not on this site's roster)` : "") +
             (r.strays ? `, ${r.strays} ranked outside their planned markets` : "") +
             (r.dryRun ? " [DRY]" : ""));
         if (!DRY) { state[file] = { key, importedAt: new Date().toISOString(), ...r }; writeState(state); }

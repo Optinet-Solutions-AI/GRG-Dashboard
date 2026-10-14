@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   parseOpenSeoCsv, classifyKeywords, pickWeek, siteFromFilename, exportDate, siteFromKeywords, keywordKey,
-  keywordLanguage,
+  keywordLanguage, decodeExport, isRankingHistory, parseRankingHistory,
 } from "./openseo.mjs";
 
 const HEADER = "Keyword,Previous position,Current position,Country code,Current update date";
@@ -234,5 +234,44 @@ describe("keywordLanguage — which grid a keyword belongs in", () => {
     const arabicOnly = rows.filter((r) => keywordLanguage(r.keyword) === "ar");
     expect(arabicOnly).toHaveLength(1);
     expect(arabicOnly[0].keyword).toBe("استرجاع أموال التداول");
+  });
+});
+
+describe("ranking-history exports — a second shape, and a second encoding", () => {
+  const HEAD = ["Keyword", "Tags", "Volume", "Position", "Position: Date", "Position 1 day ago",
+    "Position 7 days ago", "Country code", "Location", "Language", "Updated"];
+  const line = (cells: string[]) => cells.map((c) => `"${c}"`).join("\t");
+  const sample = [
+    line(HEAD),
+    line(["استرجاع أموال التداول", "", "30", "23", "2026-10-13 01:59:38", "23", "28", "AE", "United Arab Emirates", "ar", "2026-10-13"]),
+    line(["احتيال منصات التداول", "", "30", "", "2026-10-13 17:17:39", "", "", "OM", "Oman", "ar", "2026-10-13"]),
+  ].join("\n");
+
+  it("is recognised as its own format, not mistaken for an OpenSEO export", () => {
+    expect(isRankingHistory(sample)).toBe(true);
+    expect(isRankingHistory("Keyword,Previous position,Current position,Country code,Current update date")).toBe(false);
+  });
+
+  it("reads position, market and date, and takes '7 days ago' as the previous position", () => {
+    const rows = parseRankingHistory(sample);
+    expect(rows[0]).toEqual({
+      keyword: "استرجاع أموال التداول", countryCode: "AE", current: 23, previous: 28, date: "2026-10-13",
+    });
+  });
+
+  it("treats a blank position as not ranking rather than zero", () => {
+    expect(parseRankingHistory(sample)[1].current).toBeNull();
+  });
+
+  it("decodes UTF-16 LE, which read as UTF-8 parses into nonsense instead of failing", () => {
+    const utf16 = Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(sample, "utf16le")]);
+    const text = decodeExport(utf16);
+    expect(isRankingHistory(text)).toBe(true);
+    expect(parseRankingHistory(text)[0].keyword).toBe("استرجاع أموال التداول");
+  });
+
+  it("still decodes a plain UTF-8 file, with or without a BOM", () => {
+    expect(decodeExport(Buffer.from("﻿hello"))).toBe("hello");
+    expect(decodeExport(Buffer.from("hello"))).toBe("hello");
   });
 });

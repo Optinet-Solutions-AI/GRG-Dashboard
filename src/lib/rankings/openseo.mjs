@@ -229,3 +229,71 @@ export function siteFromKeywords(rows, fingerprints) {
   if (best.share - runnerUp < 0.25) return null; // too close to call
   return { domain: best.domain, share: best.share, runnerUp };
 }
+
+/**
+ * Decode an export whose encoding we don't control.
+ *
+ * The rank tracker's "ranking history" export is UTF-16 LE with a BOM; read as UTF-8 it comes
+ * back as text with a NUL between every character, which parses into nonsense rather than
+ * failing outright. Sniffing the BOM is enough — these are the only two encodings in play.
+ *
+ * @param {Buffer|Uint8Array} bytes
+ */
+export function decodeExport(bytes) {
+  const b = Buffer.from(bytes);
+  if (b.length >= 2 && b[0] === 0xff && b[1] === 0xfe) return b.toString("utf16le").replace(/^﻿/, "");
+  if (b.length >= 2 && b[0] === 0xfe && b[1] === 0xff) {
+    // Big-endian: swap each pair, then decode as LE.
+    const swapped = Buffer.allocUnsafe(b.length);
+    for (let i = 0; i + 1 < b.length; i += 2) { swapped[i] = b[i + 1]; swapped[i + 1] = b[i]; }
+    return swapped.toString("utf16le").replace(/^﻿/, "");
+  }
+  return b.toString("utf8").replace(/^﻿/, "");
+}
+
+/** True for the rank tracker's "ranking history" layout rather than an OpenSEO export. */
+export function isRankingHistory(text) {
+  const first = text.slice(0, 4000).split("\n")[0] ?? "";
+  return /"?Position:\s*Date"?/i.test(first) && /"?Country code"?/i.test(first);
+}
+
+/**
+ * Parse a "ranking history" export: tab separated, one row per keyword x market, with the
+ * current position and several historical columns.
+ *
+ * "Position 7 days ago" becomes `previous`, which is what the grid's movement arrows compare
+ * against — the export's own idea of last week, rather than whatever week happens to sit
+ * before this one in the database.
+ */
+export function parseRankingHistory(text) {
+  const grid = parseDelimited(text, "\t");
+  if (!grid.length) throw new Error("Empty export.");
+  const header = grid[0].map((h) => h.replace(/^"|"$/g, "").trim().toLowerCase());
+  const at = (name) => header.indexOf(name.toLowerCase());
+  const iKw = at("Keyword"), iCc = at("Country code"), iPos = at("Position");
+  const iPrev = at("Position 7 days ago"), iDate = at("Position: Date");
+  if (iKw < 0 || iCc < 0 || iPos < 0) {
+    throw new Error("Unrecognized ranking-history export: missing Keyword / Position / Country code columns.");
+  }
+  const clean = (v) => (v ?? "").replace(/^"|"$/g, "").trim();
+  const pos = (v) => {
+    const s = clean(v);
+    if (!/^\d+$/.test(s)) return null;
+    const n = Number(s);
+    return n >= 1 && n <= 100 ? n : null;
+  };
+  const rows = [];
+  for (const r of grid.slice(1)) {
+    const keyword = clean(r[iKw]);
+    const countryCode = clean(r[iCc]).toUpperCase();
+    if (!keyword || !countryCode) continue;
+    rows.push({
+      keyword,
+      countryCode,
+      current: pos(r[iPos]),
+      previous: iPrev >= 0 ? pos(r[iPrev]) : null,
+      date: clean(r[iDate]).slice(0, 10),
+    });
+  }
+  return rows;
+}
