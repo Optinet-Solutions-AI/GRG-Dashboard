@@ -1,12 +1,48 @@
 import { rankCell } from "@/lib/ranking/rank-cell.mjs";
+import { shortWeek } from "@/lib/ranking/week-compare";
 import type { GridRow } from "@/lib/data/ranking";
 import { formatVolume } from "@/lib/format";
 import { marketLabel } from "@/lib/market-labels";
 
 const FLAG: Record<string, string> = { AE: "🇦🇪", SA: "🇸🇦", QA: "🇶🇦", KW: "🇰🇼", BH: "🇧🇭", OM: "🇴🇲" };
 
-function Cell({ position, prev }: { position: number | null; prev: number | null }) {
+function Cell({
+  position,
+  prev,
+  prevWeek,
+  stale,
+  missedWeek,
+}: {
+  position: number | null;
+  prev: number | null;
+  prevWeek?: string | null;
+  stale?: boolean;
+  missedWeek?: string | null;
+}) {
   const cell = rankCell(position, prev);
+
+  // The position we would compare against is not last week's — that market wasn't checked
+  // then, so the previous row is older. Every arrow and the red "Lost" flag describe a move
+  // between two weeks, and none of them can be claimed here: all we know is where it last
+  // stood and when. So the cell states the current position plainly and dates the old one.
+  if (stale && cell.prev != null && prevWeek) {
+    return (
+      <span
+        title={`This market wasn't returned by a check in the week of ${missedWeek ?? "before this one"}, so there is nothing to compare against. Its last recorded position is #${cell.prev}, in the week of ${prevWeek}.`}
+        className="inline-flex flex-col items-center leading-tight"
+      >
+        {cell.ranked ? (
+          <span className="tabular-nums font-semibold text-slate-800">{cell.label}</span>
+        ) : (
+          <span className="text-xs text-slate-400">Not in top 100</span>
+        )}
+        <span className="text-[10px] tabular-nums text-slate-400 decoration-slate-300 decoration-dotted underline-offset-2 [text-decoration-line:underline]">
+          was {cell.prev} · {shortWeek(prevWeek)}
+        </span>
+      </span>
+    );
+  }
+
   if (cell.dir === "lost") {
     // Was ranked last week, gone this week — the worst possible move, so it reads red
     // and carries the position it fell from. Never-ranked stays muted (below).
@@ -56,6 +92,7 @@ export function RankingGrid({
   trackedMarkets,
   roster,
   groups,
+  previousWeek,
 }: {
   rows: GridRow[];
   globalVolume?: Map<string, number>;
@@ -93,6 +130,9 @@ export function RankingGrid({
    * a single row would hide it from every market but one.
    */
   groups?: { code: string; keywords: string[] }[];
+  /** The week immediately before this one on the page, named in the tooltip of a cell whose
+   *  market wasn't checked then. */
+  previousWeek?: string | null;
 }) {
   if (rows.length === 0 && !roster?.keywords.length && !groups?.length) {
     return <p className="text-sm text-slate-500">No ranking data for this week.</p>;
@@ -229,7 +269,13 @@ export function RankingGrid({
           const row = byKey.get(`${kw}|${c}`);
           return (
             <td key={c} className="border-l-2 border-slate-100 border-l-slate-200 px-2 py-1.5 text-center align-middle">
-              <Cell position={row?.position ?? null} prev={row?.prev_position ?? null} />
+              <Cell
+                position={row?.position ?? null}
+                prev={row?.prev_position ?? null}
+                prevWeek={row?.prev_week ?? null}
+                stale={row?.prev_stale ?? false}
+                missedWeek={previousWeek}
+              />
             </td>
           );
         })}

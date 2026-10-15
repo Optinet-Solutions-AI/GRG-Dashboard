@@ -6,6 +6,7 @@ import { ImportRankings } from "@/components/ranking/ImportRankings";
 import { SyncRankings } from "@/components/ranking/SyncRankings";
 import { createBpnClient } from "@/lib/rankings/bpn-client";
 import { CheckSummary, type RankingCheck } from "@/components/ranking/CheckSummary";
+import { markStaleComparisons } from "@/lib/ranking/week-compare";
 
 export default async function RankingPage({ searchParams }: { searchParams: Promise<{ site?: string }> }) {
   const { site } = await searchParams;
@@ -23,16 +24,20 @@ export default async function RankingPage({ searchParams }: { searchParams: Prom
   // Only Arabic keywords are monitored, so the grid is the Arabic set and there is no language
   // switch. The filter stays because the keywords table is shared with past English candidates:
   // an English keyword dropped into this grid breaks the market grouping and the reading
-  // direction at once. Filtering here rather than inside ranking_grid_multi keeps that function
-  // untouched — recreating it is what once broke the entire grid, since a set-returning
-  // function's row type is checked at call time.
+  // direction at once. Filtering here rather than inside ranking_grid_multi keeps the SQL to
+  // one job — a set-returning function's row type is checked at call time, so every change to
+  // it is a change every caller feels at once.
   const { data: kwRows } = await supabase.from("keywords").select("text, language");
   const languageOf = new Map((kwRows ?? []).map((k) => [String(k.text).trim(), String(k.language)]));
   const inLanguage = (keyword: string) => (languageOf.get(keyword.trim()) ?? "ar") !== "en";
 
-  const weekly = weeklyAll
-    .map(({ week, rows }) => ({ week, rows: rows.filter((r) => inLanguage(r.keyword)) }))
-    .filter(({ rows }) => rows.length > 0);
+  // Weeks drop out of the list when nothing in them survives the filter, so staleness is
+  // decided against the weeks actually shown — "the week before" has to mean the week above.
+  const weekly = markStaleComparisons(
+    weeklyAll
+      .map(({ week, rows }) => ({ week, rows: rows.filter((r) => inLanguage(r.keyword)) }))
+      .filter(({ rows }) => rows.length > 0),
+  );
   const weeks = weekly.map((w) => w.week);
 
   // The roster each week should display: every keyword tracked AS OF that week, and every
@@ -139,7 +144,7 @@ export default async function RankingPage({ searchParams }: { searchParams: Prom
         <span className="text-xs text-slate-500">{weeks.length} week{weeks.length === 1 ? "" : "s"} tracked · newest on top</span>
       </div>
       <p className="text-xs text-slate-500">
-        <span className="font-semibold text-emerald-600">↑</span> improved · <span className="font-semibold text-rose-500">↓</span> dropped vs previous week · (n) = previous position · <span className="rounded bg-rose-50 px-1 font-semibold text-rose-700 ring-1 ring-rose-200">↓ Lost</span> = was ranked last week, now out of the top 100 · <span className="text-slate-400">Not in top 100</span> = tracked, never ranked · <span className="rounded bg-amber-50 px-1 font-medium text-amber-700 ring-1 ring-amber-200">Not checked</span> = the rank checker never ran this keyword in that market that week — not a ranking result · muted <span className="text-slate-300">·</span> = not tracked in that market. Keywords are grouped by target market.
+        <span className="font-semibold text-emerald-600">↑</span> improved · <span className="font-semibold text-rose-500">↓</span> dropped vs previous week · (n) = previous position · <span className="rounded bg-rose-50 px-1 font-semibold text-rose-700 ring-1 ring-rose-200">↓ Lost</span> = was ranked last week, now out of the top 100 · <span className="text-slate-400">Not in top 100</span> = tracked, never ranked · <span className="text-slate-400">was 31 · 21 Sep</span> = that market wasn&apos;t checked the week before, so there is nothing to compare with — this is the last position on record and when it was recorded ·<span className="rounded bg-amber-50 px-1 font-medium text-amber-700 ring-1 ring-amber-200">Not checked</span> = the rank checker never ran this keyword in that market that week — not a ranking result · muted <span className="text-slate-300">·</span> = not tracked in that market. Keywords are grouped by target market.
         {!site ? " Showing the first site — use the selector in the top bar to change site." : ""}
       </p>
 
@@ -179,6 +184,7 @@ export default async function RankingPage({ searchParams }: { searchParams: Prom
                 trackedMarkets={groups.length ? targetMarkets : trackedMarkets}
                 roster={groups.length ? { keywords: [], countries: targetCountries } : rosterFor(week)}
                 groups={groups.length ? groups : undefined}
+                previousWeek={weeks[i + 1] ?? null}
               />
             </section>
           ))}

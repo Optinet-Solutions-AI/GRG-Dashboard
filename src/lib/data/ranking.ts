@@ -9,6 +9,12 @@ export type GridRow = {
   country_sort: number;
   position: number | null;
   prev_position: number | null;
+  /** Week `prev_position` was recorded in — the week before only if that pair was checked
+   *  then. Null for a keyword/market with no earlier row, and on rows read by the older
+   *  single-week `ranking_grid` RPC, which doesn't return it. */
+  prev_week?: string | null;
+  /** Set by markStaleComparisons: prev_position skips the preceding week on the page. */
+  prev_stale?: boolean;
 };
 
 export async function getRankingWeeks(): Promise<string[]> {

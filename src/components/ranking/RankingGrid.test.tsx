@@ -248,3 +248,47 @@ describe("RankingGrid groups — the sheet decides the shape, not the data that 
     expect(screen.getByText("kw-a")).toBeTruthy();
   });
 });
+
+describe("RankingGrid comparisons that skip a week", () => {
+  // A market the checker never returned leaves no row, so the previous position steps over
+  // that week and lands weeks earlier. Reading it as "was ranked, now gone" invented a drop
+  // that never happened in that week.
+  const skipped: GridRow[] = [
+    {
+      keyword: "تجميد حساب التداول",
+      keyword_sort: 0,
+      country: "SA",
+      country_sort: 0,
+      position: null,
+      prev_position: 31,
+      prev_week: "2026-09-21",
+      prev_stale: true,
+    },
+  ];
+
+  it("does not call it a loss when that market was not checked in the preceding week", () => {
+    render(<RankingGrid rows={skipped} previousWeek="2026-10-02" />);
+    expect(screen.queryByText("↓ Lost")).toBeNull();
+    expect(screen.getByText("Not in top 100")).toBeTruthy();
+  });
+
+  it("dates the last known position instead of implying it was last week", () => {
+    render(<RankingGrid rows={skipped} previousWeek="2026-10-02" />);
+    expect(screen.getByText(/was 31 · 21 Sep/)).toBeTruthy();
+  });
+
+  it("still flags a real week-over-week loss in red", () => {
+    const lost: GridRow[] = [{ ...skipped[0], prev_position: 4, prev_week: "2026-10-02", prev_stale: false }];
+    render(<RankingGrid rows={lost} previousWeek="2026-10-02" />);
+    expect(screen.getByText("↓ Lost")).toBeTruthy();
+    expect(screen.getByText("was 4")).toBeTruthy();
+  });
+
+  it("drops the movement arrow when the position it would compare against skips a week", () => {
+    const ranked: GridRow[] = [{ ...skipped[0], position: 12 }];
+    render(<RankingGrid rows={ranked} previousWeek="2026-10-02" />);
+    expect(screen.getByText("12")).toBeTruthy();
+    expect(screen.queryByText(/↑ \(31\)/)).toBeNull();
+    expect(screen.getByText(/was 31 · 21 Sep/)).toBeTruthy();
+  });
+});

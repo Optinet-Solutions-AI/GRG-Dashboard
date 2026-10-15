@@ -1,0 +1,27 @@
+Rankings: stop presenting an old position as last week's
+
+"تجميد حساب التداول" read "↓ Lost was 31" in the week of 2026-10-13 for Saudi
+Arabia. It had not been ranked #31 the week before: Saudi was missing from the
+2026-10-02 export entirely, so the comparison stepped over that week and landed
+on 2026-09-21, three weeks back. The cell announced a drop that did not happen
+in the week it was shown under.
+
+The previous position comes from lag() over the rows that exist, which is last
+week's only when that keyword/market was actually checked last week. A market
+the checker never returned leaves no row at all, and nothing downstream could
+tell the difference — an absent row looks the same as a pair never tracked.
+
+ranking_grid_multi now returns prev_week alongside prev_position, and the page
+compares it with the week above on the page. Where they differ the cell drops
+the arrow and the red flag — both describe a move between two weeks, and no
+move can be claimed across a gap — and shows the position dated instead:
+"was 31 · 21 Sep". The number is worth keeping; the implied recency was not.
+
+A market that WAS checked and simply did not rank is untouched: its previous
+position is null, so it reads "Not in top 100" with no flag, as before. A real
+week-over-week loss still shows "↓ Lost was 4" in red.
+
+The function is dropped and recreated rather than replaced — a set-returning
+function's return type cannot change in place.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
