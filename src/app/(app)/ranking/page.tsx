@@ -5,48 +5,30 @@ import { getCurrentRole, isAdminRole } from "@/lib/auth";
 import { ImportRankings } from "@/components/ranking/ImportRankings";
 import { SyncRankings } from "@/components/ranking/SyncRankings";
 import { createBpnClient } from "@/lib/rankings/bpn-client";
-import { LanguageToggle, parseGridLanguage } from "@/components/ranking/LanguageToggle";
 import { CheckSummary, type RankingCheck } from "@/components/ranking/CheckSummary";
 
-export default async function RankingPage({ searchParams }: { searchParams: Promise<{ site?: string; lang?: string }> }) {
-  const { site, lang } = await searchParams;
-  const requested = parseGridLanguage(lang);
+export default async function RankingPage({ searchParams }: { searchParams: Promise<{ site?: string }> }) {
+  const { site } = await searchParams;
 
   const supabase = await createServerSupabaseClient();
-  const { data: sites } = await supabase.from("sites").select("id, display_name, domain, tracked_languages").order("sort_order");
+  const { data: sites } = await supabase.from("sites").select("id, display_name, domain").order("sort_order");
   const siteList = sites ?? [];
   const selected = siteList.find((s) => s.id === site) ?? siteList[0];
   if (!selected) return <p className="text-sm text-slate-500">No sites configured yet.</p>;
-
-  // A site only shows the languages it tracks. .org and .net are Arabic-only, so their English
-  // tab would promise a grid that is never meant to exist — ?lang=en there falls back to Arabic
-  // and the toggle is hidden entirely rather than offered as a dead end.
-  const trackedLanguages = ((selected as { tracked_languages?: string[] }).tracked_languages ?? ["ar", "en"])
-    .filter((l): l is "ar" | "en" => l === "ar" || l === "en");
-  const language = trackedLanguages.includes(requested) ? requested : "ar";
 
   // Single round-trip for the most recent ~6 months of weeks (was one RPC per week).
   const weeklyAll = await getRankingGridByWeek(selected.id, 26); // newest first
   const volumes = await getKeywordVolumes();
 
-  // Split the grid by keyword language. Filtering here rather than inside ranking_grid_multi
-  // keeps that function untouched — recreating it is what once broke the entire grid, since
-  // a set-returning function's row type is checked at call time.
+  // Only Arabic keywords are monitored, so the grid is the Arabic set and there is no language
+  // switch. The filter stays because the keywords table is shared with past English candidates:
+  // an English keyword dropped into this grid breaks the market grouping and the reading
+  // direction at once. Filtering here rather than inside ranking_grid_multi keeps that function
+  // untouched — recreating it is what once broke the entire grid, since a set-returning
+  // function's row type is checked at call time.
   const { data: kwRows } = await supabase.from("keywords").select("text, language");
   const languageOf = new Map((kwRows ?? []).map((k) => [String(k.text).trim(), String(k.language)]));
-  const inLanguage = (keyword: string) => (languageOf.get(keyword.trim()) ?? "ar") === language;
-  // Counted from THIS site's rows, not the whole keywords table: the table is shared across
-  // the three sites, so a global count told the .org page it had 95 Arabic keywords when the
-  // number belonged almost entirely to .com.
-  const counts = { ar: 0, en: 0 } as Record<"ar" | "en", number>;
-  const seenHere = new Set<string>();
-  for (const { rows } of weeklyAll) {
-    for (const r of rows) {
-      if (seenHere.has(r.keyword)) continue;
-      seenHere.add(r.keyword);
-      counts[(languageOf.get(r.keyword.trim()) ?? "ar") === "en" ? "en" : "ar"]++;
-    }
-  }
+  const inLanguage = (keyword: string) => (languageOf.get(keyword.trim()) ?? "ar") !== "en";
 
   const weekly = weeklyAll
     .map(({ week, rows }) => ({ week, rows: rows.filter((r) => inLanguage(r.keyword)) }))
@@ -161,10 +143,6 @@ export default async function RankingPage({ searchParams }: { searchParams: Prom
         {!site ? " Showing the first site — use the selector in the top bar to change site." : ""}
       </p>
 
-      {trackedLanguages.length > 1 ? (
-        <LanguageToggle site={site} current={language} counts={counts} />
-      ) : null}
-
       {isAdmin ? (
         <details className="rounded-xl border border-slate-200 bg-white p-4" open={weeks.length === 0}>
           <summary className="cursor-pointer text-sm font-semibold text-slate-800">Update rankings (admin)</summary>
@@ -182,15 +160,7 @@ export default async function RankingPage({ searchParams }: { searchParams: Prom
       ) : null}
 
       {weeks.length === 0 ? (
-        language === "en" ? (
-          <div className="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center">
-            <p className="text-sm font-medium text-slate-700">No English keywords are being tracked yet.</p>
-            <p className="mx-auto mt-1 max-w-xl text-sm text-slate-500">
-              The English set is still being prepared in the rank tracker. As soon as it returns positions they appear
-              here, in their own grid — the Arabic table above is unaffected either way.
-            </p>
-          </div>
-        ) : lastCheck ? (
+        lastCheck ? (
           <CheckSummary check={lastCheck} />
         ) : (
           <p className="text-sm text-slate-500">No ranking data yet{isAdmin ? " — import an Ahrefs export above." : "."}</p>
