@@ -1,6 +1,7 @@
 import "server-only";
 import { createClient } from "@supabase/supabase-js";
-import { parseBacklinkSheet } from "./parse-sheet";
+import { parseBacklinkRows } from "./parse-sheet";
+import { readBacklinkSheetRows } from "./read-sheet";
 import { routeBacklinksBySite, targetHost } from "./route-by-site";
 
 // Minimal interface so we can accept either createClient() or createServerSupabaseClient().
@@ -8,8 +9,9 @@ import { routeBacklinksBySite, targetHost } from "./route-by-site";
 type AnyDB = { from(table: string): any };
 
 /**
- * Pull the public backlinks Google Sheet (CSV export) and replace EVERY site's
- * backlinks with its current contents (the sheet is the source of truth).
+ * Pull the backlinks Google Sheet and replace EVERY site's backlinks with its current
+ * contents (the sheet is the source of truth). How it is read — as the service account,
+ * or as an anonymous CSV fetch — is readBacklinkSheetRows' business, not this function's.
  *
  * The sheet holds links for several domains at once, so rows are routed to the
  * site their `target_url` points at. It previously assigned every row to a single
@@ -31,11 +33,12 @@ export async function syncBacklinksFromSheet(
   unrouted: number;
   unroutedHosts: Record<string, number>;
 }> {
-  const csvUrl = process.env.BACKLINKS_SHEET_CSV_URL;
-  if (!csvUrl) throw new Error("BACKLINKS_SHEET_CSV_URL is not set.");
-  const res = await fetch(csvUrl, { cache: "no-store", redirect: "follow" });
-  if (!res.ok) throw new Error(`Sheet fetch failed (HTTP ${res.status}).`);
-  const rows = parseBacklinkSheet(await res.text());
+  const rows = parseBacklinkRows(
+    await readBacklinkSheetRows({
+      csvUrl: process.env.BACKLINKS_SHEET_CSV_URL,
+      serviceAccountJson: process.env.GOOGLE_SERVICE_ACCOUNT_JSON,
+    }),
+  );
 
   const db: AnyDB = client ?? createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,

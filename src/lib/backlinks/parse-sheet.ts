@@ -40,12 +40,27 @@ function toIso(d: string): string | null {
  * Rows are grouped under date markers (col0 empty, col1 = M/D/YYYY).
  */
 export function parseBacklinkSheet(csv: string): SheetBacklink[] {
-  const lines = csv.replace(/^﻿/, "").split(/\r?\n/);
+  return parseBacklinkRows(csvToRows(csv));
+}
+
+/** The CSV export, split into rows and fields. The same shape the Sheets API returns. */
+export function csvToRows(csv: string): string[][] {
+  return csv
+    .replace(/^﻿/, "")
+    .split(/\r?\n/)
+    .filter((line) => line.trim())
+    .map(splitCsvLine);
+}
+
+/**
+ * The sheet as rows of cells, however they were read — the CSV export when the file is
+ * readable by link, or the Sheets API when the sync reads it as the service account.
+ */
+export function parseBacklinkRows(rows: string[][]): SheetBacklink[] {
   const out: SheetBacklink[] = [];
   let currentDate: string | null = null;
-  for (const raw of lines) {
-    if (!raw.trim()) continue;
-    const f = splitCsvLine(raw);
+  for (const f of rows) {
+    if (f.every((cell) => !cell?.trim())) continue;
     const c0 = (f[0] ?? "").trim();
     const c1 = (f[1] ?? "").trim();
     if (!c0 && toIso(c1)) { currentDate = toIso(c1); continue; } // date marker

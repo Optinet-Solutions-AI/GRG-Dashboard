@@ -1,0 +1,28 @@
+Backlinks: read the sheet as the service account, not as the public
+
+The sync fetched the sheet's CSV export with no credentials, which only worked
+because the file was readable by anyone with the link. When that sharing went
+away the daily job started failing with "Sheet fetch failed (HTTP 401)", and
+the only offered fix was to make the client's working spreadsheet world-readable
+again — a poor trade for feeding one dashboard.
+
+It can now identify itself instead. With GOOGLE_SERVICE_ACCOUNT_JSON set it
+mints an access token by the JWT assertion flow and reads the tab through the
+Sheets API, so the file need only be shared with one address. Without the key
+it still fetches the CSV anonymously, so nothing changes for a public sheet.
+
+The tab is addressed by the gid in the configured link and its name is looked up
+per run: the values endpoint takes a name, names get edited, gids don't.
+
+Three details worth keeping:
+  * The key is accepted as JSON or base64 — a PEM's newlines survive one hop
+    into a deployment's environment and not the next.
+  * API rows stop at the last filled cell, so short rows are padded out; the
+    parser reads fixed positions and would otherwise see undefined.
+  * The 401 now names both fixes — share it with the service account, or with
+    anyone who has the link — rather than reading as an outage.
+
+Signing is ~20 lines of node:crypto rather than a googleapis dependency: there
+is no OAuth dance for a service account, and the serverless bundle stays small.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>

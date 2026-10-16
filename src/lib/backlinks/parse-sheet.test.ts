@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseBacklinkSheet } from "./parse-sheet";
+import { parseBacklinkSheet, parseBacklinkRows } from "./parse-sheet";
 
 const CSV = [
   ",GULFRECOVERYGROUP,,,,,",
@@ -36,5 +36,31 @@ describe("parseBacklinkSheet", () => {
   });
   it("skips title/header/blank rows", () => {
     expect(parseBacklinkSheet(",GULFRECOVERYGROUP,,,,,\nARTICLE/BLOGS,BACKLINK,KEYWORD,URL,,,\n").length).toBe(0);
+  });
+});
+
+describe("parseBacklinkRows — the same sheet read through the API instead of as CSV", () => {
+  it("reads rows straight from the API the way it reads parsed CSV lines", () => {
+    const csv = [
+      "GULFRECOVERYGROUP,,,,,,",
+      ",10/5/2026,,,,,",
+      "example.com,https://example.com/a,anchor one,https://gulfrecoverygroup.com/,Yes,Live,fine",
+    ].join("\n");
+    const rows = [
+      ["GULFRECOVERYGROUP", "", "", "", "", "", ""],
+      ["", "10/5/2026", "", "", "", "", ""],
+      ["example.com", "https://example.com/a", "anchor one", "https://gulfrecoverygroup.com/", "Yes", "Live", "fine"],
+    ];
+    expect(parseBacklinkRows(rows)).toEqual(parseBacklinkSheet(csv));
+    expect(parseBacklinkRows(rows)).toHaveLength(1);
+  });
+
+  it("skips a row that is entirely empty, as a blank CSV line is skipped", () => {
+    const rows = [
+      ["", "10/5/2026", "", "", "", "", ""],
+      ["", "", "", "", "", "", ""],
+      ["example.com", "https://example.com/a", "", "", "", "", ""],
+    ];
+    expect(parseBacklinkRows(rows)).toHaveLength(1);
   });
 });
