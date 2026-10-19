@@ -88,3 +88,34 @@ describe("mintAccessToken", () => {
     ).rejects.toThrow(/invalid_grant|Invalid JWT Signature/);
   });
 });
+
+describe("acting as a user in the customer's domain (domain-wide delegation)", () => {
+  // Without delegation the sheet has to carry the service account on its share list, and a
+  // share list is something people tidy up — it was removed from the GRG sheet three days
+  // after being added. Impersonating a staff account that already has access leaves nothing
+  // to remove.
+  it("names the user to act as in the assertion's sub claim", () => {
+    const jwt = buildAssertion(account, "scope", 1_760_000_000, "operations@optinetsolutions.com");
+    expect(decode(jwt.split(".")[1]).sub).toBe("operations@optinetsolutions.com");
+  });
+
+  it("omits sub entirely when acting as itself, which Google rejects it for otherwise", () => {
+    const claims = decode(buildAssertion(account, "scope", 1_760_000_000).split(".")[1]);
+    expect("sub" in claims).toBe(false);
+  });
+
+  it("passes the subject through from mintAccessToken", async () => {
+    let body = "";
+    const fakeFetch = async (_u: string | URL, init?: RequestInit) => {
+      body = String(init?.body ?? "");
+      return new Response(JSON.stringify({ access_token: "ya29.sub" }), { status: 200 });
+    };
+    await mintAccessToken(account, "scope", {
+      fetchImpl: fakeFetch as unknown as typeof fetch,
+      now: 1,
+      subject: "operations@optinetsolutions.com",
+    });
+    const assertion = new URLSearchParams(body).get("assertion") ?? "";
+    expect(decode(assertion.split(".")[1]).sub).toBe("operations@optinetsolutions.com");
+  });
+});

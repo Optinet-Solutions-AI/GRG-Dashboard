@@ -37,6 +37,7 @@ export async function syncBacklinksFromSheet(
     await readBacklinkSheetRows({
       csvUrl: process.env.BACKLINKS_SHEET_CSV_URL,
       serviceAccountJson: process.env.GOOGLE_SERVICE_ACCOUNT_JSON,
+      impersonateUser: process.env.GOOGLE_IMPERSONATE_USER,
     }),
   );
 

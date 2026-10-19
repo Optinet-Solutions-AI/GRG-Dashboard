@@ -15,7 +15,7 @@ import { extractSheetRef, fetchSheetRows } from "@/lib/google/sheets";
 const SCOPE = "https://www.googleapis.com/auth/spreadsheets.readonly";
 
 export async function readBacklinkSheetRows(
-  cfg: { csvUrl?: string; serviceAccountJson?: string },
+  cfg: { csvUrl?: string; serviceAccountJson?: string; impersonateUser?: string },
   opts: { fetchImpl?: typeof fetch } = {},
 ): Promise<string[][]> {
   const { fetchImpl = fetch } = opts;
@@ -27,7 +27,10 @@ export async function readBacklinkSheetRows(
     if (!ref) {
       throw new Error(`BACKLINKS_SHEET_CSV_URL is not a Google spreadsheet link, so there is no spreadsheet to read: ${cfg.csvUrl}`);
     }
-    const token = await mintAccessToken(account, SCOPE, { fetchImpl });
+    // With a user named here the account acts as that person, which needs domain-wide
+    // delegation but leaves nothing on the sheet's share list to be tidied away. Without
+    // one it acts as itself, and the sheet must name it as a viewer.
+    const token = await mintAccessToken(account, SCOPE, { fetchImpl, subject: cfg.impersonateUser });
     return fetchSheetRows(ref, token, { fetchImpl });
   }
 

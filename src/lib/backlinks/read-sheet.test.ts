@@ -65,3 +65,29 @@ describe("readBacklinkSheetRows", () => {
     await expect(readBacklinkSheetRows({}, { fetchImpl })).rejects.toThrow(/BACKLINKS_SHEET_CSV_URL/);
   });
 });
+
+describe("reading the sheet as a staff account", () => {
+  it("acts as the configured user so the sheet needs no service-account share", async () => {
+    let body = "";
+    const fetchImpl = (async (url: string | URL, init?: RequestInit) => {
+      const u = String(url);
+      if (u.includes("oauth2")) {
+        body = String(init?.body ?? "");
+        return new Response(JSON.stringify({ access_token: "ya29.x" }), { status: 200 });
+      }
+      if (u.includes("?fields=")) {
+        return new Response(JSON.stringify({ sheets: [{ properties: { sheetId: 662124179, title: "BL" } }] }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ values: [["a"]] }), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    await readBacklinkSheetRows(
+      { csvUrl: URL_, serviceAccountJson: KEY, impersonateUser: "operations@optinetsolutions.com" },
+      { fetchImpl },
+    );
+
+    const assertion = new URLSearchParams(body).get("assertion") ?? "";
+    const claims = JSON.parse(Buffer.from(assertion.split(".")[1], "base64url").toString("utf8"));
+    expect(claims.sub).toBe("operations@optinetsolutions.com");
+  });
+});

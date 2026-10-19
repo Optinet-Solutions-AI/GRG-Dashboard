@@ -22,8 +22,16 @@ const TOKEN_URI = "https://oauth2.googleapis.com/token";
 
 const b64url = (value: string | Buffer) => Buffer.from(value).toString("base64url");
 
-/** The signed JWT that is exchanged for an access token. `iat` is passed in so it can be tested. */
-export function buildAssertion(account: ServiceAccount, scope: string, iat: number): string {
+/**
+ * The signed JWT that is exchanged for an access token. `iat` is passed in so it can be tested.
+ *
+ * `subject` is a user in the customer's Workspace to act as, which requires the account to be
+ * authorised for domain-wide delegation. It exists because a share list is something people
+ * tidy up: the service account was added to the GRG sheet, and removed again three days
+ * later, which stopped the backlinks sync dead. Reading as a staff account who already has
+ * access puts nothing on the share list to be removed.
+ */
+export function buildAssertion(account: ServiceAccount, scope: string, iat: number, subject?: string): string {
   const header = b64url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
   const claims = b64url(
     JSON.stringify({
@@ -32,6 +40,8 @@ export function buildAssertion(account: ServiceAccount, scope: string, iat: numb
       aud: account.token_uri ?? TOKEN_URI,
       iat,
       exp: iat + 3600,
+      // Only when impersonating: Google refuses an assertion carrying an empty sub.
+      ...(subject ? { sub: subject } : {}),
     }),
   );
   const signature = createSign("RSA-SHA256").update(`${header}.${claims}`).sign(account.private_key, "base64url");
@@ -63,15 +73,15 @@ export function readServiceAccount(raw: string | undefined | null): ServiceAccou
 export async function mintAccessToken(
   account: ServiceAccount,
   scope: string,
-  opts: { fetchImpl?: typeof fetch; now?: number } = {},
+  opts: { fetchImpl?: typeof fetch; now?: number; subject?: string } = {},
 ): Promise<string> {
-  const { fetchImpl = fetch, now = Math.floor(Date.now() / 1000) } = opts;
+  const { fetchImpl = fetch, now = Math.floor(Date.now() / 1000), subject } = opts;
   const res = await fetchImpl(account.token_uri ?? TOKEN_URI, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
-      assertion: buildAssertion(account, scope, now),
+      assertion: buildAssertion(account, scope, now, subject),
     }).toString(),
     cache: "no-store",
   });
