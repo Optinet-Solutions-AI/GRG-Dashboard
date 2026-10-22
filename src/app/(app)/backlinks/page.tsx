@@ -227,6 +227,11 @@ export default async function BacklinksPage({
           id: r.id, date: r.date, source_site: r.source_site, source_url: r.source_url,
           anchor_text: r.anchor_text, target_url: r.target_url, indexed: r.indexed, status: r.status,
         }))}
+        emptyMessage={
+          trackedOnly && allRows.length > 0
+            ? "No links on this site's tracked keywords — the notice above explains why."
+            : undefined
+        }
       />
     </div>
   );

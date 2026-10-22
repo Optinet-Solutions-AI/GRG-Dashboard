@@ -40,7 +40,9 @@ function valueFor(r: BacklinkRow, key: SortKey): string | number {
   }
 }
 
-export function BacklinksTable({ rows }: { rows: BacklinkRow[] }) {
+/** `emptyMessage` lets the page explain an empty table it filtered itself — "No backlinks yet"
+ *  there reads as a broken sync. */
+export function BacklinksTable({ rows, emptyMessage = "No backlinks yet." }: { rows: BacklinkRow[]; emptyMessage?: string }) {
   const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({ key: "date", dir: "desc" });
 
   const sorted = useMemo(() => {
@@ -101,7 +103,7 @@ export function BacklinksTable({ rows }: { rows: BacklinkRow[] }) {
               <td className="px-3 py-2">{isIndexed(r.indexed) ? <span className="font-semibold text-green-600">✓</span> : <span className="text-slate-300">—</span>}</td>
             </tr>
           ))}
-          {sorted.length === 0 ? <tr><td colSpan={6} className="px-3 py-3 text-slate-500">No backlinks yet.</td></tr> : null}
+          {sorted.length === 0 ? <tr><td colSpan={6} className="px-3 py-3 text-slate-500">{emptyMessage}</td></tr> : null}
         </tbody>
       </table>
     </div>
