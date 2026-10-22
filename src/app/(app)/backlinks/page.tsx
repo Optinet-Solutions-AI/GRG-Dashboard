@@ -4,6 +4,7 @@ import { getCurrentRole, isAdminRole } from "@/lib/auth";
 import { StatCard } from "@/components/StatCard";
 import { SyncBacklinksButton } from "@/components/sections/SyncBacklinksButton";
 import { BacklinksTable } from "@/components/backlinks/BacklinksTable";
+import { tallyByKeyword } from "@/lib/backlinks/keyword-tally";
 
 type Row = {
   id: string; date: string;
@@ -68,6 +69,7 @@ export default async function BacklinksPage({ searchParams }: { searchParams: Pr
   const byStatus = tally(rows, (r) => r.status);
   const byDate = tally(rows, (r) => r.date).sort((a, b) => b.label.localeCompare(a.label)); // newest first
   const topSources = tally(rows, (r) => r.source_site).slice(0, 8);
+  const byKeyword = tallyByKeyword(rows);
   const topTargets = tally(rows, (r) => (r.target_url ? r.target_url.replace(/^https?:\/\//, "") : null)).slice(0, 8);
   // Taken from the dates themselves, not from byDate's order: it used to read the last
   // element of a chronological list, so flipping that list to newest-first would have
@@ -113,6 +115,29 @@ export default async function BacklinksPage({ searchParams }: { searchParams: Pr
             <div className="mb-2 text-sm font-semibold text-slate-900">Top source domains</div>
             {topSources.map((s) => (
               <div key={s.label} className="flex justify-between py-0.5 text-sm"><span className="truncate text-slate-600">{s.label}</span><span className="ml-2 font-semibold text-slate-800">{s.count}</span></div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {byKeyword.length > 0 && (
+        <div className="rounded-xl border border-slate-200 bg-white p-4">
+          <div className="mb-2 flex items-baseline justify-between gap-3">
+            <div className="text-sm font-semibold text-slate-900">Backlinks per keyword</div>
+            <div className="text-xs text-slate-500">
+              {byKeyword.length} keyword{byKeyword.length === 1 ? "" : "s"}
+            </div>
+          </div>
+          {/* Full width and two columns rather than a quarter of the row beside the panels
+              above: the keywords are Arabic phrases, and in a narrow column every one of them
+              truncates to the same opening words. */}
+          <div className="max-h-72 overflow-y-auto pr-1 md:columns-2 md:gap-6">
+            {byKeyword.map((k) => (
+              <div key={k.label} className="flex items-baseline justify-between gap-3 break-inside-avoid py-0.5 text-sm">
+                {/* dir="auto" so an Arabic phrase reads right-to-left and a Latin one doesn't. */}
+                <span dir="auto" className="min-w-0 text-slate-600">{k.label}</span>
+                <span className="shrink-0 font-semibold tabular-nums text-slate-800">{k.count}</span>
+              </div>
             ))}
           </div>
         </div>
