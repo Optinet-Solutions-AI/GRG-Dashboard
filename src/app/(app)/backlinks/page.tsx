@@ -5,6 +5,8 @@ import { StatCard } from "@/components/StatCard";
 import { SyncBacklinksButton } from "@/components/sections/SyncBacklinksButton";
 import { BacklinksTable } from "@/components/backlinks/BacklinksTable";
 import { tallyByKeyword } from "@/lib/backlinks/keyword-tally";
+import { trackedKeywordSet, filterToTrackedKeywords, type TargetRow } from "@/lib/backlinks/tracked-keywords";
+import Link from "next/link";
 
 type Row = {
   id: string; date: string;
@@ -43,8 +45,13 @@ function tally<T>(items: T[], key: (t: T) => string | null): { label: string; co
   return [...m.entries()].map(([label, count]) => ({ label, count })).sort((a, b) => b.count - a.count);
 }
 
-export default async function BacklinksPage({ searchParams }: { searchParams: Promise<{ site?: string }> }) {
-  const { site } = await searchParams;
+export default async function BacklinksPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ site?: string; keywords?: string }>;
+}) {
+  const { site, keywords } = await searchParams;
+  const trackedOnly = keywords === "tracked";
   const supabase = await createServerSupabaseClient();
   const isAdmin = isAdminRole(await getCurrentRole());
   const { data: siteList } = await supabase.from("sites").select("id").order("sort_order");
@@ -57,7 +64,17 @@ export default async function BacklinksPage({ searchParams }: { searchParams: Pr
     .limit(1000);
   if (siteId) q = q.eq("site_id", siteId);
   const { data } = await q;
-  const rows = (data ?? []) as unknown as Row[];
+  const allRows = (data ?? []) as unknown as Row[];
+
+  // This site's rank-tracking roster, to tell links built for a keyword we measure from the
+  // long tail. Both counts are worked out either way, so the control can show them without
+  // the reader having to click to find out.
+  const { data: targetRows } = siteId
+    ? await supabase.from("keyword_targets").select("keywords(text)").eq("site_id", siteId)
+    : { data: [] };
+  const roster = trackedKeywordSet((targetRows ?? []) as unknown as TargetRow[]);
+  const trackedRows = filterToTrackedKeywords(allRows, roster);
+  const rows = trackedOnly ? trackedRows : allRows;
 
   // ---- Analytics ----
   const total = rows.length;
@@ -83,6 +100,62 @@ export default async function BacklinksPage({ searchParams }: { searchParams: Pr
         {isAdmin ? <SyncBacklinksButton /> : null}
       </div>
       <p className="text-xs text-slate-500">Synced from the Google Sheet (auto-refreshes daily; admins can sync on demand).</p>
+
+      {/* A link rather than client state, so the choice survives a refresh and can be shared,
+          and so the whole page is rendered against one set of rows. Both counts are on the
+          control: .net has 497 links and none on its tracked keywords, which is worth seeing
+          without having to click to discover it. */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1">
+          {([
+            ["all", "All keywords", allRows.length],
+            ["tracked", "Tracked keywords only", trackedRows.length],
+          ] as const).map(([key, label, count]) => {
+            const on = (key === "tracked") === trackedOnly;
+            const p = new URLSearchParams();
+            if (site) p.set("site", site);
+            if (key === "tracked") p.set("keywords", "tracked");
+            const qs = p.toString();
+            return (
+              <Link
+                key={key}
+                href={qs ? `/backlinks?${qs}` : "/backlinks"}
+                aria-current={on ? "page" : undefined}
+                className={`inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-semibold transition-colors ${
+                  on ? "bg-slate-800 text-white shadow-sm" : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                }`}
+              >
+                {label}
+                <span
+                  className={`rounded-full px-1.5 py-0.5 text-[11px] font-semibold tabular-nums ${
+                    on ? "bg-white/20 text-white" : "bg-slate-100 text-slate-500"
+                  }`}
+                >
+                  {count}
+                </span>
+              </Link>
+            );
+          })}
+        </div>
+        {trackedOnly ? (
+          <p className="text-xs text-slate-500">
+            Only links whose keyword is one of the {roster.size} this site is rank-tracked for.
+          </p>
+        ) : null}
+      </div>
+
+      {trackedOnly && trackedRows.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-amber-300 bg-amber-50/60 p-4">
+          <p className="text-sm font-medium text-amber-900">
+            None of this site&apos;s {allRows.length} backlinks were built for one of its tracked keywords.
+          </p>
+          <p className="mt-1 text-sm text-amber-800">
+            {roster.size === 0
+              ? "No rank-tracking keywords are set for this site yet, so there is nothing to match against."
+              : "The links use different wording from the keyword sheet. Either the link building is aimed somewhere other than the tracked set, or the two are written differently and need reconciling."}
+          </p>
+        </div>
+      ) : null}
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <StatCard label="Total backlinks" value={String(total)} />
@@ -145,7 +218,9 @@ export default async function BacklinksPage({ searchParams }: { searchParams: Pr
 
       <div className="flex items-center justify-between">
         <p className="text-xs text-slate-500">Click a column header to sort (date, status, keyword…).</p>
-        {rows.length === 0 && isAdmin ? <p className="text-xs text-slate-500">No backlinks yet — click “Sync from Google Sheet”.</p> : null}
+        {/* Keyed on the unfiltered count: with the tracked filter on, an empty table means the
+            filter excluded everything, not that nothing has been synced. */}
+        {allRows.length === 0 && isAdmin ? <p className="text-xs text-slate-500">No backlinks yet — click “Sync from Google Sheet”.</p> : null}
       </div>
       <BacklinksTable
         rows={rows.map((r) => ({
