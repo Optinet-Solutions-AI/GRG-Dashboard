@@ -1,0 +1,47 @@
+# Capture the PageSpeed Insights report screenshot for every tracked URL, nightly.
+#
+# This used to be a job on an office machine. It ran a stale copy of the script and failed
+# every night from 2026-09-16 to 2026-10-30 without anyone knowing, because the script
+# exited 0 and the dashboard's scores — which arrive by a different route — kept looking
+# healthy. Running it here removes the machine; the script now exits non-zero when it
+# captures less than it set out to, so a failed night fails the job and GitHub says so.
+#
+# This job holds NO database credentials. It posts what it captures to the dashboard's
+# /api/pagespeed/proof endpoint with CRON_SECRET, and the service-role key stays in Vercel.
+name: PageSpeed proof capture
+
+on:
+  schedule:
+    # 02:00 UTC — after the 06:00 ranking cron would be too late for the same day's card,
+    # and the small hours keep us clear of PSI's busier periods.
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+
+# One capture at a time: pagespeed.web.dev throttles repeated audits from one source, and a
+# run overlapping its predecessor would be competing with itself for the same reports.
+concurrency:
+  group: pagespeed-proof
+  cancel-in-progress: false
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci
+
+      # Chromium only: the capture drives one browser and the other two would be dead weight.
+      - run: npx playwright install --with-deps chromium
+
+      - name: Capture and post the reports
+        env:
+          PROOF_UPLOAD_URL: ${{ secrets.PROOF_UPLOAD_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: node scripts/capture-psi-report.mjs
