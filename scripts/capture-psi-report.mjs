@@ -10,6 +10,7 @@ import { chromium } from "playwright";
 import { createClient } from "@supabase/supabase-js";
 import { LAUNCH_OPTIONS, CONTEXT_OPTIONS, maskAutomation } from "./psi-browser.mjs";
 import { runOutcome } from "./psi-outcome.mjs";
+import { uploadMode, fetchTrackedUrls, postProof } from "./psi-upload-mode.mjs";
 
 function todayLocal() {
   const d = new Date();
@@ -84,13 +85,24 @@ async function captureReport(page, url, strategy) {
 }
 
 async function main() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) throw new Error("Missing Supabase env vars.");
-  const db = createClient(url, key, { auth: { persistSession: false } });
+  // Two homes: run here with the Supabase keys in .env, or run scheduled in the cloud with
+  // only the shared secret, posting to the dashboard. See psi-upload-mode.mjs.
+  const target = uploadMode(process.env);
+  const db =
+    target.mode === "database"
+      ? createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
+          auth: { persistSession: false },
+        })
+      : null;
 
-  const { data: allUrls, error } = await db.from("pagespeed_urls").select("id, url").eq("active", true).order("sort_order");
-  if (error) throw new Error(error.message);
+  let allUrls;
+  if (db) {
+    const { data, error } = await db.from("pagespeed_urls").select("id, url").eq("active", true).order("sort_order");
+    if (error) throw new Error(error.message);
+    allUrls = data;
+  } else {
+    allUrls = await fetchTrackedUrls(target);
+  }
   // Optional filters: re-capturing one site shouldn't cost a live audit on the other two,
   // and pagespeed.web.dev throttles repeated audits from one IP.
   const filters = process.argv.slice(2).map((a) => a.toLowerCase());
@@ -110,11 +122,20 @@ async function main() {
   let done = 0;
   for (const u of urls) {
     const patch = { pagespeed_url_id: u.id, date };
+    let posted = 0;
     for (const strategy of ["mobile", "desktop"]) {
       try {
         process.stdout.write(`Capturing ${strategy} report for ${u.url} … `);
         const res = await captureReport(page, u.url, strategy);
         const s = res.scores;
+        if (!db) {
+          // Cloud run: hand the image to the dashboard, which owns the database key. Each
+          // strategy goes on its own so a failed desktop capture doesn't lose a good mobile one.
+          await postProof(target, { pageUrl: u.url, strategy, scores: s, buffer: res.buffer });
+          posted++;
+          console.log(`ok (perf ${s.performance}, posted)`);
+          continue;
+        }
         patch[`${strategy}_score`] = s.performance;
         patch[`${strategy}_accessibility`] = s.accessibility;
         patch[`${strategy}_best_practices`] = s.bestPractices;
@@ -127,6 +148,12 @@ async function main() {
       } catch (e) {
         console.log("FAILED:", e.message);
       }
+    }
+
+    if (!db) {
+      if (posted) done++;
+      else console.log(`  nothing captured for ${u.url} — storing nothing`);
+      continue;
     }
     // Nothing captured? Store nothing. The old code inserted `patch` regardless, so a run
     // where every capture failed left one blank card per site on the dashboard — which is
