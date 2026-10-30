@@ -45,7 +45,18 @@ describe("proofFreshness", () => {
     expect(proofFreshness([], "2026-10-30")).toEqual({ lastProof: null, daysSince: null, stale: false });
   });
 
-  it("holds the threshold in one named place", () => {
-    expect(PROOF_STALE_AFTER_DAYS).toBeGreaterThan(15); // longer than the 15-day capture cycle
+  // The capture is nightly now, not once per 15-day cycle, so the window that means
+  // "something is wrong" is a few failed nights — not a fortnight of them.
+  it("gives the nightly capture a few nights' grace, and no more", () => {
+    expect(PROOF_STALE_AFTER_DAYS).toBeGreaterThanOrEqual(2);
+    expect(PROOF_STALE_AFTER_DAYS).toBeLessThanOrEqual(5);
+  });
+
+  it("warns after three nights with nothing stored", () => {
+    expect(proofFreshness([entry("2026-10-26", true)], "2026-10-30").stale).toBe(true);
+  });
+
+  it("does not warn over a single missed night", () => {
+    expect(proofFreshness([entry("2026-10-29", true)], "2026-10-30").stale).toBe(false);
   });
 });

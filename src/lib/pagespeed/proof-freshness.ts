@@ -15,8 +15,15 @@ export type ProofEntry = {
   desktop_screenshot_path: string | null;
 };
 
-/** Captures run on a 15-day cycle, so a gap only means something once it exceeds one. */
-export const PROOF_STALE_AFTER_DAYS = 20;
+/**
+ * The capture runs nightly (.github/workflows/pagespeed-proof.yml), so three nights with
+ * nothing stored is a fault, not a quiet patch. This was 20 when captures came round once
+ * per 15-day cycle; leaving it there would have meant a fortnight of silence on a job that
+ * now tries every night — the same mistake in slower motion.
+ *
+ * One missed night is tolerated: PSI itself has bad evenings.
+ */
+export const PROOF_STALE_AFTER_DAYS = 3;
 
 const daysBetween = (from: string, to: string) =>
   Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
