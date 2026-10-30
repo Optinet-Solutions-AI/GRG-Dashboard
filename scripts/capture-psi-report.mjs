@@ -8,6 +8,7 @@
 //
 import { chromium } from "playwright";
 import { createClient } from "@supabase/supabase-js";
+import { LAUNCH_OPTIONS, CONTEXT_OPTIONS, maskAutomation } from "./psi-browser.mjs";
 
 function todayLocal() {
   const d = new Date();
@@ -98,8 +99,11 @@ async function main() {
   if (!urls.length) { console.log(filters.length ? `No active URL matches ${filters.join(", ")}.` : "No active PageSpeed URLs."); return; }
 
   const date = todayLocal();
-  const browser = await chromium.launch();
-  const ctx = await browser.newContext({ viewport: { width: 1000, height: 1500 }, deviceScaleFactor: 2 });
+  // Not a bare launch: pagespeed.web.dev refuses an obviously automated browser and blames
+  // the URL for it. See psi-browser.mjs.
+  const browser = await chromium.launch(LAUNCH_OPTIONS);
+  const ctx = await browser.newContext(CONTEXT_OPTIONS);
+  await ctx.addInitScript(maskAutomation);
   const page = await ctx.newPage();
 
   let done = 0;
