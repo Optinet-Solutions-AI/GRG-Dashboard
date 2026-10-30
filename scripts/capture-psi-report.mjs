@@ -9,6 +9,7 @@
 import { chromium } from "playwright";
 import { createClient } from "@supabase/supabase-js";
 import { LAUNCH_OPTIONS, CONTEXT_OPTIONS, maskAutomation } from "./psi-browser.mjs";
+import { runOutcome } from "./psi-outcome.mjs";
 
 function todayLocal() {
   const d = new Date();
@@ -155,7 +156,18 @@ async function main() {
   }
 
   await browser.close();
+
+  // A run that captured nothing is a failed run. Exiting 0 regardless is what let six weeks
+  // of empty cards pass for success on the machine that runs this overnight.
+  const outcome = runOutcome({ attempted: urls.length, captured: done });
   console.log(`\nDone. Updated ${done} URL(s) with proof screenshots for ${date}.`);
+  console.log(outcome.message);
+  return outcome.exitCode;
 }
 
-main().catch((e) => { console.error("FAILED:", e.message); process.exit(1); });
+// exitCode rather than exit(): killing the process mid-flush aborts on Windows with a libuv
+// assertion, which would turn "nothing to do" into a crash — a worse lie than the silence
+// this replaced.
+main()
+  .then((code) => { process.exitCode = code ?? 0; })
+  .catch((e) => { console.error("FAILED:", e.message); process.exitCode = 1; });

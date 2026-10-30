@@ -9,9 +9,16 @@ import { PsiAutofillButton } from "@/components/sources/PsiAutofillButton";
 import { DeleteEntryButton } from "@/components/pagespeed/DeleteEntryButton";
 import { EditEntryForm } from "@/components/entry/EditEntryForm";
 import { PAGESPEED_FIELDS } from "@/lib/entries/entry-fields";
+import { proofFreshness } from "@/lib/pagespeed/proof-freshness";
 
 // PSI runs Lighthouse for mobile + desktop (~30-60s); give the serverless function room.
 export const maxDuration = 60;
+
+/** Local calendar date, matching how capture dates are stored. */
+function todayIso(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
 function gaugeColor(n: number | null): string {
   if (n == null) return "#cbd5e1";
@@ -120,9 +127,26 @@ export default async function PageSpeedPage({ searchParams }: { searchParams: Pr
     );
   }
 
+  // The scores and the proof images come from different places, and only the images can stop
+  // quietly: fresh scores kept arriving daily while no image was stored between 2026-09-16
+  // and 2026-10-30, and nothing on this page said so. Now it does.
+  const freshness = proofFreshness(rows, todayIso());
+
   return (
     <div className="space-y-5">
       <h1 className="text-xl font-bold">PageSpeed</h1>
+      {freshness.stale ? (
+        <div className="rounded-xl border border-amber-300 bg-amber-50/70 p-4">
+          <p className="text-sm font-medium text-amber-900">
+            No PageSpeed report image has been captured for {freshness.daysSince} days — the last one is from{" "}
+            {freshness.lastProof}.
+          </p>
+          <p className="mt-1 text-sm text-amber-800">
+            The scores below are still current; they arrive automatically. The report images come from a browser
+            script that has to be run, and it looks like it has stopped.
+          </p>
+        </div>
+      ) : null}
       {entry}
       {rows.map((r) => (
         <div key={r.id} className="rounded-xl border border-slate-200 bg-white p-4">
