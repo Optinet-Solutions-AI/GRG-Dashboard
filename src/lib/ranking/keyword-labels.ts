@@ -13,7 +13,7 @@
 const KEYWORD_EN: Record<string, string> = {
   "إغلاق صفقات التداول": "Closing trading positions",
   "احتيال منصات التداول": "Trading platform fraud",
-  "استرجاع أموال التداول": "Recovering trading funds",
+  "استرجاع الأموال من التداول": "Recovering trading funds",
   "استرجاع أموال الفوركس": "Recovering Forex funds",
   "استرداد خسائر التداول": "Recovering trading losses",
   "استشارة لاسترداد الأموال": "Fund recovery consultation",

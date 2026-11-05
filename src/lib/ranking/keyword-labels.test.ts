@@ -6,7 +6,10 @@ import { keywordEnglish } from "./keyword-labels";
 // whole ranking grid.
 describe("keywordEnglish — main keywords", () => {
   const expected: Array<[string, string]> = [
-    ["استرجاع أموال التداول", "Recovering trading funds"],
+    // Reworded by the client on 2026-11-05, keeping its ranking history: the keyword row was
+    // renamed rather than replaced, so the gloss has to follow the new spelling or the grid
+    // shows this keyword with an empty English column.
+    ["استرجاع الأموال من التداول", "Recovering trading funds"],
     ["مشاكل سحب التداول", "Trading withdrawal issues"],
     ["تجميد حساب التداول", "Frozen trading account"],
     ["علامات نصب التداول", "Signs of a trading scam"],
