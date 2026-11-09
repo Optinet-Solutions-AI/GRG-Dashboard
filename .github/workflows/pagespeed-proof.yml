@@ -25,7 +25,11 @@ concurrency:
 
 jobs:
   capture:
-    runs-on: ubuntu-latest
+    # Pinned, not "latest": GitHub rolled ubuntu-latest to 26.04 on 2026-11-03 and the
+    # installed Playwright (1.58.2) refuses to install Chromium there —
+    # "Playwright does not support chromium on ubuntu26.04-x64" — which failed this job
+    # every night from the 3rd to the 9th. Move back to latest once Playwright supports it.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
