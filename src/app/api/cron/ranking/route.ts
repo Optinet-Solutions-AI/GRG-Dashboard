@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { refreshRankings, type SweepMode } from "@/lib/rankings/refresh";
 import { runSeoAnalysis, type RunResult } from "@/lib/seo-analyzer/run";
 import { kickPagespeedCapture, type PsiKick } from "@/lib/pagespeed/kick";
+import { syncRankingsFromAhrefs } from "@/lib/rankings/ahrefs-sync";
 
 // Ranking automation, end to end. Two halves on purpose:
 //   1. IMPORT — read whatever the tracker has already checked for the current ISO week
@@ -69,6 +70,24 @@ export async function GET(request: Request) {
       }
     }
 
+    // Pull the week straight from Ahrefs' Rank Tracker. Ahrefs refreshes these projects
+    // weekly (Wednesday), so this lands Wednesday's numbers — but it runs on every daily
+    // invocation on purpose: the write is keyed on Ahrefs' own update date, so re-running
+    // rewrites the same week rather than opening a new one, and a Wednesday the cron
+    // couldn't serve is picked up on the Thursday instead of being lost for a week.
+    //
+    // It replaces the CSV-export chain, which needed a person to export and an office
+    // machine to be switched on, and which delivered 17 of the project's 30 keywords.
+    // ?ahrefs=0 skips it; ?ahrefsDry=1 reports what it would write.
+    let ahrefs: Awaited<ReturnType<typeof syncRankingsFromAhrefs>> | { error: string } | null = null;
+    if (!dryRun && url.searchParams.get("ahrefs") !== "0") {
+      try {
+        ahrefs = await syncRankingsFromAhrefs({ dryRun: url.searchParams.get("ahrefsDry") === "1" });
+      } catch (e) {
+        ahrefs = { error: e instanceof Error ? e.message : "ahrefs sync failed" };
+      }
+    }
+
     // Back on by default (2026-10-02). It was opt-in because a capture made here carries
     // scores but no gauges screenshot — but the machine that runs the screenshot script on
     // a schedule was found to be on a stale copy, so the 10-01 cycle produced no PageSpeed
@@ -85,7 +104,7 @@ export async function GET(request: Request) {
     }
 
     // A refused week is a successful run that declined to store bad data, not an error.
-    return NextResponse.json({ ok: true, dryRun, results: imports, sweep: sweepOutcome, seo, pagespeed });
+    return NextResponse.json({ ok: true, dryRun, results: imports, sweep: sweepOutcome, seo, ahrefs, pagespeed });
   } catch (e) {
     return NextResponse.json(
       { ok: false, error: e instanceof Error ? e.message : "ranking ingest failed" },
