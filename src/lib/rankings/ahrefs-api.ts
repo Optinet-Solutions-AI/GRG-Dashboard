@@ -143,6 +143,21 @@ export async function fetchProjectRankings(
   return data?.keywords ?? [];
 }
 
+/**
+ * Whether today is the weekly slot: Wednesday, in UTC.
+ *
+ * The CRON cannot be weekly — Vercel's Hobby plan allows two scheduled jobs and both are
+ * spoken for, and the rest of the ranking route has to run daily. So the schedule fires
+ * every morning and the week is chosen here.
+ *
+ * `force` is for running it by hand: testing it, and recovering a week that was missed
+ * without waiting another seven days.
+ */
+export function isSyncDay(now: Date = new Date(), opts: { force?: boolean } = {}): boolean {
+  if (opts.force) return true;
+  return now.getUTCDay() === 3;
+}
+
 /** 7 days before `asOf`, which is what "previous" means on a weekly cycle. */
 export function compareDate(asOf: string): string {
   const d = new Date(`${asOf}T00:00:00Z`);
