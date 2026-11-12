@@ -110,9 +110,25 @@ async function syncSite(
   const { data: existingTargets } = await db.from("keyword_targets").select("keyword_id, country_id").eq("site_id", site.id);
   const haveTarget = new Set((existingTargets ?? []).map((t: { keyword_id: string; country_id: string }) => `${t.keyword_id}|${t.country_id}`));
   const keywordHasAnyTarget = new Set((existingTargets ?? []).map((t: { keyword_id: string }) => t.keyword_id));
+  // group_code is not a label: the grid reads it as the row's market, so it must be "ALL" for
+  // a keyword that spans every market, or that row's own country code. Anything else matches
+  // no column and the whole row draws as "not tracked here" — which is what "AHREFS" did.
+  const marketsPerKeyword = new Map<string, Set<string>>();
+  for (const p of payload) {
+    const set = marketsPerKeyword.get(p.keyword_id) ?? new Set<string>();
+    set.add(p.country_id);
+    marketsPerKeyword.set(p.keyword_id, set);
+  }
+  const allMarkets = new Set(payload.map((p) => p.country_id));
+  const codeById = new Map((ctRows ?? []).map((c: { id: string; code: string }) => [c.id as string, String(c.code).toUpperCase()]));
   const newTargets = payload
     .filter((p) => !haveTarget.has(`${p.keyword_id}|${p.country_id}`) && !keywordHasAnyTarget.has(p.keyword_id))
-    .map((p) => ({ site_id: site.id, keyword_id: p.keyword_id, country_id: p.country_id, group_code: "AHREFS" }));
+    .map((p) => ({
+      site_id: site.id,
+      keyword_id: p.keyword_id,
+      country_id: p.country_id,
+      group_code: (marketsPerKeyword.get(p.keyword_id)?.size ?? 0) === allMarkets.size ? "ALL" : codeById.get(p.country_id)!,
+    }));
   let marketsOpened = 0;
   if (newTargets.length) {
     const { error } = await db.from("keyword_targets").insert(newTargets);
