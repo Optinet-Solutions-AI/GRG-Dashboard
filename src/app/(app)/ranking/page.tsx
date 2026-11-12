@@ -21,23 +21,15 @@ export default async function RankingPage({ searchParams }: { searchParams: Prom
   const weeklyAll = await getRankingGridByWeek(selected.id, 26); // newest first
   const volumes = await getKeywordVolumes();
 
-  // Only Arabic keywords are monitored, so the grid is the Arabic set and there is no language
-  // switch. The filter stays because the keywords table is shared with past English candidates:
-  // an English keyword dropped into this grid breaks the market grouping and the reading
-  // direction at once. Filtering here rather than inside ranking_grid_multi keeps the SQL to
-  // one job — a set-returning function's row type is checked at call time, so every change to
-  // it is a change every caller feels at once.
-  const { data: kwRows } = await supabase.from("keywords").select("text, language");
-  const languageOf = new Map((kwRows ?? []).map((k) => [String(k.text).trim(), String(k.language)]));
-  const inLanguage = (keyword: string) => (languageOf.get(keyword.trim()) ?? "ar") !== "en";
-
-  // Weeks drop out of the list when nothing in them survives the filter, so staleness is
-  // decided against the weeks actually shown — "the week before" has to mean the week above.
-  const weekly = markStaleComparisons(
-    weeklyAll
-      .map(({ week, rows }) => ({ week, rows: rows.filter((r) => inLanguage(r.keyword)) }))
-      .filter(({ rows }) => rows.length > 0),
-  );
+  // The grid used to drop anything flagged English, from when the keywords table held a set
+  // of English candidates nobody tracked. Ahrefs now decides what is tracked, and it tracks
+  // the brand itself — "gulf recovery group" — which that filter would have stored and then
+  // hidden, the worst of both. Anything with a result for this site is shown, whatever
+  // script it is written in.
+  //
+  // Nothing stale is let through by this: the 39 English rows left over from the old set
+  // carry no targets and no results, so they have nothing to appear in.
+  const weekly = markStaleComparisons(weeklyAll.filter(({ rows }) => rows.length > 0));
   const weeks = weekly.map((w) => w.week);
 
   // The roster each week should display: every keyword tracked AS OF that week, and every
@@ -83,7 +75,7 @@ export default async function RankingPage({ searchParams }: { searchParams: Prom
   for (const t of targets) {
     const kw = t.keywords?.text?.trim();
     const cc = t.countries?.code;
-    if (!kw || !cc || !inLanguage(kw)) continue;
+    if (!kw || !cc) continue;
     countrySortFromTargets.set(cc, t.countries?.sort_order ?? 0);
     const list = groupKeywords.get(t.group_code) ?? [];
     if (!list.includes(kw)) list.push(kw);
