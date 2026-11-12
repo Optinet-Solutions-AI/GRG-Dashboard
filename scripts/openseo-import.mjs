@@ -117,27 +117,27 @@ async function importFile(client, file, rowsIn, domain) {
     rows = rows.filter((r) => !bad.has(keywordKey(r.keyword)));
   }
 
-  // Once a site has a roster, the roster decides what the dashboard shows — full stop. An
-  // export still carries keywords that were dropped from it, and some of them still rank; left
-  // alone the adoption rule would quietly put them back, which is exactly what replacing a
-  // roster is meant to stop.
+  // The roster used to decide what the dashboard shows, and anything off it was dropped. That
+  // was right while a person curated the roster and an export could still list keywords they
+  // had deliberately removed.
+  //
+  // From 2026-11 the weekly file arrives unattended from Ahrefs and nobody imports by hand, so
+  // Ahrefs IS the keyword list. Filtering to the roster now means the dashboard silently tracks
+  // less than the client does: a keyword added in Ahrefs would never appear. So the roster is
+  // read (a roster keyword counts as tracked, even with no result yet) but no longer used to
+  // discard rows. The foreign-site guard above still stands — a .com file carrying .net
+  // keywords is a mislabelled file, not a new keyword.
   const rosterTexts = (await client.query(
     `select distinct k.text from keyword_targets kt join keywords k on k.id = kt.keyword_id
      where kt.site_id = $1`, [site.id],
   )).rows.map((r) => r.text);
+  for (const t of rosterTexts) tracked.add(t);
   const rosterKeys = new Set(rosterTexts.map(keywordKey));
-  let offRoster = 0;
-  if (rosterKeys.size) {
-    const before = rows.length;
-    rows = rows.filter((r) => rosterKeys.has(keywordKey(r.keyword)));
-    offRoster = before - rows.length;
-    // Being on the roster IS being tracked. Otherwise a roster keyword with no result yet falls
-    // to the "adopt only if it ranks" rule and is dropped — the opposite of what a roster means,
-    // and it would show as outstanding forever while its NR result sat unstored.
-    for (const t of rosterTexts) tracked.add(t);
-  }
+  // Still counted, purely so the ledger shows how far the export has drifted from the roster.
+  const offRoster = [...new Set(rows.map((r) => keywordKey(r.keyword)))]
+    .filter((k) => !rosterKeys.has(k)).length;
 
-  const { adopt, skip, known } = classifyKeywords(rows, tracked, { establishing });
+  const { adopt, skip, known } = classifyKeywords(rows, tracked, { establishing, adoptAll: true });
 
   const countries = new Map((await client.query("select id, code from countries")).rows
     .map((r) => [r.code.toUpperCase(), r.id]));
@@ -212,6 +212,21 @@ async function importFile(client, file, rowsIn, domain) {
                            and kt.country_id = r.country_id)
        on conflict do nothing`, [site.id, target.week]);
 
+    // A keyword new to this site needs a target row per market the export covered, or it is
+    // invisible: the grid draws its shape from keyword_targets, so rankings for a keyword with
+    // no target at all are stored and never rendered. The stray insert above cannot do this —
+    // it only widens keywords that ALREADY have a target, and deliberately only for pairs that
+    // rank. A newly tracked keyword usually ranks nowhere yet, and still has to show.
+    const adopted = await client.query(
+      `insert into keyword_targets (site_id, keyword_id, country_id, group_code)
+       select distinct r.site_id, r.keyword_id, r.country_id, co.code
+       from rankings r
+       join countries co on co.id = r.country_id
+       where r.site_id = $1 and r.week_date = $2
+         and not exists (select 1 from keyword_targets kt
+                         where kt.site_id = r.site_id and kt.keyword_id = r.keyword_id)
+       on conflict do nothing`, [site.id, target.week]);
+
     // Record that the check HAPPENED, separately from what it found. Without this a site
     // that was checked and ranked nowhere (.org's first run: 50 keywords, none in the top
     // 100) is indistinguishable from one that was never checked — both store zero rows.
@@ -257,6 +272,7 @@ async function importFile(client, file, rowsIn, domain) {
     return {
       ...summary, written: payload.length, ranked: payload.filter((p) => p.pos !== null).length,
       strays: strays.rowCount,
+      newlyTracked: adopted.rowCount,
       checkedPairs: contribution.pairs, checkedRanked: contribution.ranked,
     };
   } catch (e) {
@@ -328,8 +344,9 @@ async function main() {
             `${r.known} tracked, ${r.adopted} adopted, ${r.skipped} skipped as unranked` +
             (r.skippedByLanguage ? `, ${r.skippedByLanguage} skipped (language not tracked here)` : "") +
             (r.trespassers ? `, ${r.trespassers} rejected (belong to another site)` : "") +
-            (r.offRoster ? `, ${r.offRoster} skipped (not on this site's roster)` : "") +
+            (r.offRoster ? `, ${r.offRoster} not on the sheet roster (kept — the export decides)` : "") +
             (r.strays ? `, ${r.strays} ranked outside their planned markets` : "") +
+            (r.newlyTracked ? `, ${r.newlyTracked} market row(s) added for keyword(s) new to this site` : "") +
             (r.dryRun ? " [DRY]" : ""));
         if (!DRY) { state[file] = { key, importedAt: new Date().toISOString(), ...r }; writeState(state); }
       } catch (e) {

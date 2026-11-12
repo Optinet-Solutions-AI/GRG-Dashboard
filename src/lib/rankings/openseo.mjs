@@ -122,7 +122,7 @@ export function keywordKey(text) {
  * Latin-script keyword there follows the same top-100 rule as everything else.
  */
 export function classifyKeywords(rows, tracked, opts = {}) {
-  const { establishing = false } = opts;
+  const { establishing = false, adoptAll = false } = opts;
   const established = tracked.size > 0;
   /** @type {Map<string, OpenSeoRow[]>} */
   const byKeyword = new Map();
@@ -141,6 +141,18 @@ export function classifyKeywords(rows, tracked, opts = {}) {
   for (const [keyword, list] of byKeyword) {
     if (trackedKeys.has(keywordKey(keyword))) { known.push(keyword); continue; }
     const english = keywordLanguage(keyword) === "en";
+    // The export IS the tracked set. Once the weekly file arrives unattended from Ahrefs,
+    // "adopt only if it ranks" throws away the client's own keyword list: a keyword added in
+    // Ahrefs that happens to sit at NR would never appear, and the dashboard would quietly
+    // track less than the client does.
+    if (adoptAll) {
+      adopt.push({
+        keyword,
+        language: english ? "en" : "ar",
+        reason: "present in the export — the export defines the tracked set",
+      });
+      continue;
+    }
     if (establishing) {
       adopt.push({
         keyword,

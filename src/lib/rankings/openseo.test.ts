@@ -275,3 +275,43 @@ describe("ranking-history exports — a second shape, and a second encoding", ()
     expect(decodeExport(Buffer.from("hello"))).toBe("hello");
   });
 });
+
+describe("adoptAll — Ahrefs is the source of truth for which keywords exist", () => {
+  // From 2026-11 the weekly export arrives unattended from Ahrefs and nobody imports by
+  // hand. The old rules were written for a hand-curated roster: anything off it was dropped,
+  // and a new keyword had to RANK before it was kept. Under automation both silently throw
+  // away what the client is actually tracking — a keyword added in Ahrefs would never appear,
+  // and one sitting at NR would wait for a ranking it may never get.
+  // Arabic on purpose: a Latin keyword is adopted by the separate "English set" rule, which
+  // would make these pass without adoptAll doing anything at all.
+  const NEW_KW = "كيف أسترجع أموالي من شركة نصابة";
+  const KNOWN_KW = "تجميد حساب التداول";
+  const rows = [
+    { keyword: NEW_KW, countryCode: "SA", current: null },
+    { keyword: KNOWN_KW, countryCode: "SA", current: 12 },
+  ];
+
+  it("keeps a keyword the export carries even though it ranks nowhere", () => {
+    const { adopt, skip } = classifyKeywords(rows, new Set([KNOWN_KW]), { adoptAll: true });
+    expect(adopt.map((a) => a.keyword)).toEqual([NEW_KW]);
+    expect(skip).toEqual([]);
+  });
+
+  it("says why it was adopted, so the ledger explains itself later", () => {
+    const { adopt } = classifyKeywords(rows, new Set(), { adoptAll: true });
+    expect(adopt.every((a) => /export/i.test(a.reason))).toBe(true);
+  });
+
+  it("still drops nothing it already knows — known stays known", () => {
+    const { known } = classifyKeywords(rows, new Set([KNOWN_KW]), { adoptAll: true });
+    expect(known).toEqual([KNOWN_KW]);
+  });
+
+  // Without the flag the old, stricter rule must be untouched: this is what protects a
+  // hand-curated roster from being refilled by an export that still lists dropped keywords.
+  it("leaves the previous behaviour alone when the flag is off", () => {
+    const { adopt, skip } = classifyKeywords(rows, new Set([KNOWN_KW]));
+    expect(adopt).toEqual([]);
+    expect(skip).toEqual([NEW_KW]);
+  });
+});
