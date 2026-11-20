@@ -7,6 +7,8 @@ import { SyncRankings } from "@/components/ranking/SyncRankings";
 import { createBpnClient } from "@/lib/rankings/bpn-client";
 import { CheckSummary, type RankingCheck } from "@/components/ranking/CheckSummary";
 import { markStaleComparisons } from "@/lib/ranking/week-compare";
+import { OtherRankingKeywords } from "@/components/ranking/OtherRankingKeywords";
+import { discoveryForSite } from "@/lib/discovery/run";
 
 export default async function RankingPage({ searchParams }: { searchParams: Promise<{ site?: string }> }) {
   const { site } = await searchParams;
@@ -114,6 +116,10 @@ export default async function RankingPage({ searchParams }: { searchParams: Prom
     .limit(1);
   const lastCheck = (checkRows?.[0] ?? null) as RankingCheck | null;
 
+  // Keywords Ahrefs sees this site ranking for outside the tracked set. Monthly, and a
+  // separate claim from the grid, so it is rendered below it rather than mixed in.
+  const discovery = await discoveryForSite(supabase, selected.id);
+
   const isAdmin = isAdminRole(await getCurrentRole());
 
   // Freshness hint for the sync panel. Admin-only and best-effort: if the tracker is
@@ -182,6 +188,8 @@ export default async function RankingPage({ searchParams }: { searchParams: Prom
           ))}
         </div>
       )}
+
+      <OtherRankingKeywords cycle={discovery.cycle} rows={discovery.rows} />
     </div>
   );
 }
