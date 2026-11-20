@@ -79,13 +79,26 @@ export function toRankingRows(rows: AhrefsKeywordRow[], siteHost: string): Ranki
 }
 
 /**
- * The week this data belongs to: Ahrefs' own most recent SERP update, not the day we asked.
- * A Thursday retry after a failed Wednesday therefore lands on the same week the Wednesday
- * would have, instead of opening a second week for one sweep.
+ * The week this data belongs to: the Wednesday of the week Ahrefs last refreshed in.
+ *
+ * Ahrefs does not refresh a project in one moment. On 2026-11-18 the .net project's slots
+ * carried stamps from the 17th, 18th and 19th, and .org's bulk landed at 08:00–09:00 UTC —
+ * after our 06:00 sync. Taking the newest stamp made the week move with the hour we asked:
+ * the same refresh was filed under 2026-11-18 in the morning and 2026-11-19 later, so one
+ * cycle showed as two weeks and the first was half-filled. The same flaw had already put
+ * .com in 2026-11-10 while .org and .net sat in 11-11.
+ *
+ * Snapping to the week's Wednesday makes the bucket stable whenever the sync runs, and
+ * matches the Wednesday the client's report is cut from. ISO weeks run Monday–Sunday.
  */
 export function weekOf(rows: AhrefsKeywordRow[]): string | null {
   const dates = (rows ?? []).map((r) => String(r?.serp_updated ?? "").slice(0, 10)).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d));
-  return dates.length ? dates.sort().at(-1)! : null;
+  if (!dates.length) return null;
+  const newest = new Date(`${dates.sort().at(-1)!}T00:00:00Z`);
+  // Monday = 0 … Sunday = 6, then step to that week's Wednesday.
+  const fromMonday = (newest.getUTCDay() + 6) % 7;
+  newest.setUTCDate(newest.getUTCDate() - fromMonday + 2);
+  return newest.toISOString().slice(0, 10);
 }
 
 export function projectForDomain(projects: AhrefsProject[], domain: string): AhrefsProject | null {
@@ -141,21 +154,6 @@ export async function fetchProjectRankings(
     opts.fetchImpl ?? fetch,
   )) as { keywords?: AhrefsKeywordRow[] };
   return data?.keywords ?? [];
-}
-
-/**
- * Whether today is the weekly slot: Wednesday, in UTC.
- *
- * The CRON cannot be weekly — Vercel's Hobby plan allows two scheduled jobs and both are
- * spoken for, and the rest of the ranking route has to run daily. So the schedule fires
- * every morning and the week is chosen here.
- *
- * `force` is for running it by hand: testing it, and recovering a week that was missed
- * without waiting another seven days.
- */
-export function isSyncDay(now: Date = new Date(), opts: { force?: boolean } = {}): boolean {
-  if (opts.force) return true;
-  return now.getUTCDay() === 3;
 }
 
 /** 7 days before `asOf`, which is what "previous" means on a weekly cycle. */

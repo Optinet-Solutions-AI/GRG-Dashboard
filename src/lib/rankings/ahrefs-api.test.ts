@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { ourPosition, toRankingRows, weekOf, projectForDomain, isSyncDay } from "./ahrefs-api";
+import { ourPosition, toRankingRows, weekOf, projectForDomain } from "./ahrefs-api";
 
 /**
  * Ahrefs' rank tracker answers with one row per keyword×location, and every row carries a
@@ -103,30 +103,40 @@ describe("projectForDomain", () => {
   });
 });
 
-describe("isSyncDay — the weekly slot", () => {
-  // The cron itself has to stay daily: Vercel's Hobby plan allows two scheduled jobs and
-  // both are spoken for, and the rest of this route does need to run every day. So the
-  // weekly slot is decided here rather than by the schedule.
-  it("runs on Wednesday", () => {
-    expect(isSyncDay(new Date("2026-11-18T06:00:00Z"))).toBe(true);
+describe("weekOf — one bucket per refresh cycle", () => {
+  const row = (serp_updated: string) => ({ keyword: "k", country: "SA", serp_updated, competitors_list: [] });
+
+  /**
+   * Ahrefs does not refresh a project in one moment: on 2026-11-18 the .net project's slots
+   * carried stamps from the 17th, 18th and 19th. Taking the latest stamp made the week move
+   * with the hour we happened to ask — the same refresh landed in 2026-11-18 at 06:00 and in
+   * 2026-11-19 later the same week, so the page showed one cycle as two weeks, the first of
+   * them half-filled. The same flaw put .com in 2026-11-10 while .org and .net sat in 11-11.
+   *
+   * So the week is the Wednesday of the week the newest stamp falls in: stable no matter when
+   * the sync runs, and it matches the Wednesday the client's report is cut from.
+   */
+  it("puts stamps spread across one week into that week's Wednesday", () => {
+    expect(weekOf([row("2026-11-17T02:00:00Z"), row("2026-11-18T09:30:00Z"), row("2026-11-19T10:00:00Z")])).toBe("2026-11-18");
   });
 
-  it("stays out of the way on every other day", () => {
-    for (const d of ["2026-11-16", "2026-11-17", "2026-11-19", "2026-11-20", "2026-11-21", "2026-11-22"]) {
-      expect(isSyncDay(new Date(`${d}T06:00:00Z`))).toBe(false);
-    }
+  it("gives the same answer whichever day of that week the sync runs", () => {
+    const monday = weekOf([row("2026-11-16T02:00:00Z")]);
+    const thursday = weekOf([row("2026-11-19T23:00:00Z")]);
+    expect(monday).toBe("2026-11-18");
+    expect(thursday).toBe("2026-11-18");
   });
 
-  // Asked for by hand, it runs whatever the day — that is how it gets tested and how a
-  // missed week is recovered without waiting seven days.
-  it("runs on any day when explicitly forced", () => {
-    expect(isSyncDay(new Date("2026-11-19T06:00:00Z"), { force: true })).toBe(true);
+  it("keeps a Sunday with the week it belongs to, not the next one", () => {
+    // ISO weeks run Monday–Sunday, so 2026-11-22 (Sun) belongs with 2026-11-18.
+    expect(weekOf([row("2026-11-22T12:00:00Z")])).toBe("2026-11-18");
   });
 
-  // Wednesday is judged in UTC, the clock the cron runs on. Late Tuesday evening in the
-  // Gulf is already Wednesday in UTC, and the schedule fires at 06:00 UTC regardless.
-  it("judges the day in UTC, not the server's local zone", () => {
-    expect(isSyncDay(new Date("2026-11-18T23:30:00Z"))).toBe(true);
-    expect(isSyncDay(new Date("2026-11-19T00:30:00Z"))).toBe(false);
+  it("moves to the next Wednesday once a new week starts", () => {
+    expect(weekOf([row("2026-11-23T02:00:00Z")])).toBe("2026-11-25");
+  });
+
+  it("still returns null when nothing carries a date", () => {
+    expect(weekOf([row("")])).toBeNull();
   });
 });

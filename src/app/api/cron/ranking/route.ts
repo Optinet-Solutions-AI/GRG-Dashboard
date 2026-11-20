@@ -4,7 +4,6 @@ import { refreshRankings, type SweepMode } from "@/lib/rankings/refresh";
 import { runSeoAnalysis, type RunResult } from "@/lib/seo-analyzer/run";
 import { kickPagespeedCapture, type PsiKick } from "@/lib/pagespeed/kick";
 import { syncRankingsFromAhrefs } from "@/lib/rankings/ahrefs-sync";
-import { isSyncDay } from "@/lib/rankings/ahrefs-api";
 
 // Ranking automation, end to end. Two halves on purpose:
 //   1. IMPORT — read whatever the tracker has already checked for the current ISO week
@@ -71,28 +70,22 @@ export async function GET(request: Request) {
       }
     }
 
-    // Pull the week straight from Ahrefs' Rank Tracker — ON WEDNESDAYS, the day Ahrefs
-    // refreshes these projects and the day the client's weekly report is cut from.
-    //
-    // The cron itself stays daily because the rest of this route needs it and the Hobby
-    // plan's two scheduled jobs are both spoken for, so the weekly slot is decided by
-    // isSyncDay rather than by the schedule.
-    //
-    // It replaces the CSV-export chain, which needed a person to export and an office
-    // machine to be switched on, and which delivered 17 of the project's 30 keywords.
-    //   ?ahrefs=0 skips it · ?ahrefs=1 runs it on any day · ?ahrefsDry=1 reports only
+    // The weekly Ahrefs pull does NOT run here any more. This cron fires at 06:00 UTC and
+    // Ahrefs refreshes these projects later in the morning — .org at 08:00-09:00 and .net at
+    // 09:00-10:00 on 2026-11-18 — so a 06:00 read stored last week's slots while looking
+    // perfectly healthy (.net held 108 where the project had 186). It now runs from
+    // .github/workflows/ahrefs-rankings.yml at 12:00 UTC on Wednesdays, which is also why
+    // it is not gated on the weekday here: that job decides when, and ?ahrefs=1 is how it
+    // asks. ?ahrefs=0 still refuses.
     let ahrefs: Awaited<ReturnType<typeof syncRankingsFromAhrefs>> | { error: string } | { skipped: string } | null = null;
-    if (!dryRun && url.searchParams.get("ahrefs") !== "0") {
-      const forced = url.searchParams.get("ahrefs") === "1" || url.searchParams.get("ahrefsDry") === "1";
-      if (!isSyncDay(new Date(), { force: forced })) {
-        ahrefs = { skipped: "not Wednesday — the Ahrefs sync runs weekly (?ahrefs=1 to force)" };
-      } else {
-        try {
-          ahrefs = await syncRankingsFromAhrefs({ dryRun: url.searchParams.get("ahrefsDry") === "1" });
-        } catch (e) {
-          ahrefs = { error: e instanceof Error ? e.message : "ahrefs sync failed" };
-        }
+    if (!dryRun && url.searchParams.get("ahrefs") === "1") {
+      try {
+        ahrefs = await syncRankingsFromAhrefs({ dryRun: url.searchParams.get("ahrefsDry") === "1" });
+      } catch (e) {
+        ahrefs = { error: e instanceof Error ? e.message : "ahrefs sync failed" };
       }
+    } else if (!dryRun && url.searchParams.get("ahrefsDry") === "1") {
+      ahrefs = await syncRankingsFromAhrefs({ dryRun: true });
     }
 
     // Back on by default (2026-10-02). It was opt-in because a capture made here carries
