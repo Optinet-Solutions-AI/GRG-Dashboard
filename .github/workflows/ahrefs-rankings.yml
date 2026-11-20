@@ -1,0 +1,60 @@
+# Pull the week's rankings from Ahrefs — Wednesdays, after Ahrefs has finished refreshing.
+#
+# This lived on the Vercel cron at 06:00 UTC and was reading the projects too early. On
+# 2026-11-18 Ahrefs refreshed .org at 08:00–09:00 UTC and .net at 09:00–10:00, so the 06:00
+# run stored last week's slot set: .net kept 108 slots when the project held 186, and .org
+# 108 against 156. Nothing looked broken — the numbers were real, just a week old, which is
+# the hardest kind of wrong to notice.
+#
+# Vercel's Hobby plan allows two crons and both are spoken for, so the weekly pull runs here
+# instead. GitHub schedules are best-effort and can start late under load; that is fine for
+# a job whose data only changes once a week, and 12:00 leaves hours of margin either side.
+#
+# No credentials beyond the shared secret: the job only asks the dashboard to run its own
+# sync, and the Ahrefs and database keys stay in Vercel.
+name: Ahrefs weekly rankings
+
+on:
+  schedule:
+    # 12:00 UTC Wednesday — two hours after the latest refresh seen so far (10:00 UTC).
+    - cron: "0 12 * * 3"
+  workflow_dispatch:
+
+concurrency:
+  group: ahrefs-rankings
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Ask the dashboard to pull this week from Ahrefs
+        env:
+          DASHBOARD_URL: ${{ secrets.DASHBOARD_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          # ?ahrefs=1 runs the sync whatever the weekday, so a re-run on a Thursday after a
+          # failed Wednesday still works. psi/seo are off: this job is only about rankings.
+          code=$(curl -sS -m 170 -w '%{http_code}' -o response.json \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${DASHBOARD_URL}/api/cron/ranking?ahrefs=1&psi=0&seo=0")
+          echo "HTTP ${code}"
+          cat response.json
+          test "${code}" = "200"
+          # A run that wrote nothing is a failed run, not a quiet one — the whole point of
+          # moving off 06:00 was that a thin week looked exactly like a healthy one.
+          python3 - <<'PY'
+          import json, sys
+          data = json.load(open("response.json"))
+          ahrefs = data.get("ahrefs") or {}
+          results = ahrefs.get("results") or []
+          if not results:
+              sys.exit(f"No Ahrefs results in the response: {ahrefs}")
+          for r in results:
+              print(f"{r['site']}: week {r['week']} · {r['slots']} slots · {r['ranked']} ranking · wrote {r['written']}")
+          empty = [r["site"] for r in results if not r.get("written")]
+          if empty:
+              sys.exit(f"Wrote nothing for: {', '.join(empty)}")
+          PY
