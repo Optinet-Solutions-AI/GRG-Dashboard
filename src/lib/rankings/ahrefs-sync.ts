@@ -5,6 +5,7 @@ import {
   AhrefsError, compareDate, fetchProjectRankings, listProjects, projectForDomain, toRankingRows, weekOf,
   type RankingRow,
 } from "./ahrefs-api";
+import { targetsToPrune } from "./prune-targets";
 
 /**
  * Pull every tracked site's rankings straight from Ahrefs and store them.
@@ -21,6 +22,7 @@ export const AHREFS_SOURCE = "ahrefs-api";
 
 export type SiteSyncResult = {
   site: string;
+  marketsClosed?: number;
   week: string | null;
   slots: number;
   ranked: number;
@@ -135,6 +137,27 @@ async function syncSite(
     if (!error) marketsOpened = newTargets.length;
   }
 
+  // ---- and remove what Ahrefs no longer tracks ----
+  // Ahrefs decides the keyword set, which has to mean removal as well as addition. Without
+  // this, a keyword dropped in Ahrefs — or one the old hand-kept sheet carried and Ahrefs never
+  // had — sits on the grid for ever as a row that will never be checked. targetsToPrune
+  // refuses on an implausibly thin reply, so a half-failed call cannot empty a site.
+  const ahrefsKeywords = [...new Set(rows.map((r) => r.keyword))];
+  const { data: siteTargets } = await db
+    .from("keyword_targets").select("id, keywords(text)").eq("site_id", site.id);
+  const flat = ((siteTargets ?? []) as unknown as Array<{ id: string; keywords: { text?: string } | { text?: string }[] | null }>)
+    .map((t) => {
+      const kw = Array.isArray(t.keywords) ? t.keywords[0] : t.keywords;
+      return { id: String(t.id), keyword: String(kw?.text ?? "") };
+    })
+    .filter((t) => t.keyword);
+  const pruneIds = targetsToPrune(flat, ahrefsKeywords);
+  let marketsClosed = 0;
+  if (pruneIds.length) {
+    const { error } = await db.from("keyword_targets").delete().in("id", pruneIds);
+    if (!error) marketsClosed = pruneIds.length;
+  }
+
   // Record that the check happened, separately from what it found, so a week where nothing
   // ranked is distinguishable from a week nobody checked.
   await db.from("ranking_checks").upsert(
@@ -149,7 +172,7 @@ async function syncSite(
     { onConflict: "site_id,week_date" },
   );
 
-  return { site: site.domain, week, slots: rows.length, ranked, written: payload.length, keywordsCreated, marketsOpened };
+  return { site: site.domain, week, slots: rows.length, ranked, written: payload.length, keywordsCreated, marketsOpened, marketsClosed };
 }
 
 export async function syncRankingsFromAhrefs(

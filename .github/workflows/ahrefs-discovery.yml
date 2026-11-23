@@ -1,0 +1,62 @@
+# Find the keywords the sites rank for but nobody tracks — once a month.
+#
+# This is the only scheduled job that SPENDS Ahrefs API units, and it spends them on the same
+# key the weekly rankings sync depends on (cap: 10,000 a month). A full cycle is 6,300 units,
+# so it runs once per Ahrefs billing month and no more. The endpoint prices the cycle and
+# refuses if the key cannot cover it, so a schedule that fires twice cannot overspend — the
+# second run finds the cycle already bought and does nothing.
+#
+# Monthly rather than weekly because Ahrefs' own organic data moves slowly: a weekly pull would
+# mostly re-buy unchanged positions.
+name: Ahrefs keyword discovery
+
+on:
+  schedule:
+    # 06:00 UTC on the 2nd of each month — after the billing month has rolled over on the 5th
+    # … deliberately NOT the 1st: the cycle is named for the calendar month, and starting a day
+    # in gives any month-boundary refresh time to settle.
+    - cron: "0 6 2 * *"
+  workflow_dispatch:
+    inputs:
+      dry:
+        description: "Report what it would buy, without buying it"
+        type: boolean
+        default: true
+
+concurrency:
+  group: ahrefs-discovery
+  cancel-in-progress: false
+
+jobs:
+  discover:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Pull this month's other-ranking keywords
+        env:
+          DASHBOARD_URL: ${{ secrets.DASHBOARD_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          # A manual run defaults to a dry run; the schedule always buys.
+          DRY: ${{ github.event_name == 'workflow_dispatch' && inputs.dry && '1' || '0' }}
+        run: |
+          set -euo pipefail
+          code=$(curl -sS -m 170 -w '%{http_code}' -o response.json \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${DASHBOARD_URL}/api/cron/discovery?dry=${DRY}")
+          echo "HTTP ${code}"
+          cat response.json
+          test "${code}" = "200"
+          python3 - <<'PY'
+          import json, sys
+          d = json.load(open("response.json"))
+          print(f"cycle {d.get('cycle')} · dry={d.get('dryRun')} · estimated {d.get('estimatedUnits')} units · spent {d.get('spentUnits')}")
+          for p in d.get("pairs", []):
+              note = p.get("error") or p.get("skipped") or ""
+              print(f"  {p['site']} {p['country']}: {p['rows']} rows, {p['units']} units {note}")
+          if d.get("error"):
+              sys.exit(d["error"])
+          # A halt means Ahrefs charged more than its pricing explains — never let that pass quietly.
+          failed = [p for p in d.get("pairs", []) if p.get("error")]
+          if failed:
+              sys.exit(f"{len(failed)} market(s) failed; see above")
+          PY
