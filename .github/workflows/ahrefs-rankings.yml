@@ -7,8 +7,17 @@
 # the hardest kind of wrong to notice.
 #
 # Vercel's Hobby plan allows two crons and both are spoken for, so the weekly pull runs here
-# instead. GitHub schedules are best-effort and can start late under load; that is fine for
-# a job whose data only changes once a week, and 12:00 leaves hours of margin either side.
+# instead. GitHub schedules are best-effort, and on this repo "best effort" means 7-10 hours
+# late, every day: the nightly PageSpeed job asks for 02:00 UTC and started between 08:53 and
+# 12:05 UTC on each of the eleven days to 2026-11-25. At 12:00 UTC that drift put this job
+# somewhere after 19:00 UTC, which is past midnight for the people reading the dashboard, and
+# on 2026-11-25 - its first scheduled Wednesday - it had still not started by 14:30 UTC.
+#
+# So it asks for 02:00 and asks twice. 02:00 UTC plus the usual drift lands inside Wednesday
+# daytime, and Thursday is a catch-up for a Wednesday that GitHub drops under load rather than
+# merely delays. The catch-up costs nothing and cannot double-file: the week comes from
+# Ahrefs' own refresh stamp, snapped to that week's Wednesday, and a re-run replaces exactly
+# the rows this source wrote. Thursday's pull therefore lands on the same Wednesday date.
 #
 # No credentials beyond the shared secret: the job only asks the dashboard to run its own
 # sync, and the Ahrefs and database keys stay in Vercel.
@@ -16,8 +25,11 @@ name: Ahrefs weekly rankings
 
 on:
   schedule:
-    # 12:00 UTC Wednesday — two hours after the latest refresh seen so far (10:00 UTC).
-    - cron: "0 12 * * 3"
+    # 02:00 UTC Wednesday, and again on Thursday in case Wednesday's run was dropped. Both
+    # file under the same Wednesday, so the report is still weekly; the later run only ever
+    # replaces the earlier one's rows.
+    - cron: "0 2 * * 3"
+    - cron: "0 2 * * 4"
   workflow_dispatch:
 
 concurrency:
